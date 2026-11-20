@@ -1,11 +1,27 @@
 /**
- * EEE FEST 2026 - Master Verification & Admin Portal Engine
- * Dual Architecture: Live Flask Backend + Client-Side Offline Runtime
+ * EEE FEST 2026 - Master Verification & Management Portal
+ * Firebase Firestore Cloud Sync + Offline Dual Runtime Engine
+ * Zero Emojis Compliance
  */
 
-// Global State
-let currentCategory = 'raffle';
+// Firebase Configuration provided by user
+const firebaseConfig = {
+  apiKey: "AIzaSyBNHhjmEDuLoClqVekVmh6sFW8JaEQbsYM",
+  authDomain: "fest2026-35ba3.firebaseapp.com",
+  projectId: "fest2026-35ba3",
+  storageBucket: "fest2026-35ba3.firebasestorage.app",
+  messagingSenderId: "204942525316",
+  appId: "1:204942525316:web:a3ef5c081b0843175513d1",
+  measurementId: "G-42MPESR8ZK"
+};
+
+// Global App States
+let firebaseApp = null;
+let firestoreDb = null;
+let isFirestoreConnected = false;
 let isLiveApi = false;
+
+let currentCategory = 'raffle';
 let currentAdmin = null; // { id, name, email, role, allowed_sections }
 let settingsState = {
   enable_raffle: true,
@@ -28,13 +44,13 @@ const itemsPerPage = 25;
 let searchQuery = '';
 let statusFilter = 'all';
 
-// In-Memory Offline Storage (LocalStorage backed)
+// In-Memory Storage
 let localCoupons = [];
 let localAdmins = [];
 let localActivity = [];
 
 // ========================================================
-// SOUND EFFECTS SYNTHESIZER (Web Audio API)
+// SOUND EFFECTS SYNTHESIZER (Web Audio API - No external mp3s needed)
 // ========================================================
 class SoundEngine {
   constructor() {
@@ -52,8 +68,6 @@ class SoundEngine {
     this.init();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    
-    // Two-tone rising major third chime
     const osc1 = this.ctx.createOscillator();
     const gain1 = this.ctx.createGain();
     osc1.type = 'sine';
@@ -119,20 +133,41 @@ const sfx = new SoundEngine();
 // INITIALIZATION
 // ========================================================
 document.addEventListener('DOMContentLoaded', async () => {
-  await initStorageAndConnection();
-  initCategoryTabs();
+  initFirebase();
+  await initStorage();
   initAuthUI();
+  initCategoryTabs();
   initSuperAdminControls();
   initScanner();
   initManualForm();
   initTableControls();
   initExportButton();
+  initAddonCouponModal();
   updateUIForCurrentCategory();
   refreshStatsAndTable();
 });
 
-// Detect environment and seed offline storage if needed
-async function initStorageAndConnection() {
+// Initialize Firebase SDK
+function initFirebase() {
+  if (typeof firebase !== 'undefined') {
+    try {
+      if (!firebase.apps.length) {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+      } else {
+        firebaseApp = firebase.app();
+      }
+      firestoreDb = firebase.firestore();
+      isFirestoreConnected = true;
+      console.log('Firebase initialized successfully.');
+    } catch (e) {
+      console.warn('Firebase initialization note:', e);
+      isFirestoreConnected = false;
+    }
+  }
+}
+
+// Storage Seeding & Backend Detection
+async function initStorage() {
   const statusLabel = document.getElementById('connectionStatusLabel');
 
   // Load session admin if saved
@@ -150,22 +185,24 @@ async function initStorageAndConnection() {
     const res = await fetch('/api/stats', { cache: 'no-store' });
     if (res.ok) {
       isLiveApi = true;
-      statusLabel.innerText = 'LIVE SERVER (1,260 COUPONS LOADED)';
+      statusLabel.innerText = 'ONLINE - FLASK & FIREBASE';
       statusLabel.style.color = 'var(--success)';
       const data = await res.json();
-      if (data.settings) {
-        settingsState = data.settings;
-      }
+      if (data.settings) settingsState = data.settings;
       return;
     }
   } catch (err) {
-    // API not reachable or running on file:///
     isLiveApi = false;
   }
 
-  // Offline / Client-Side Fallback Mode
-  statusLabel.innerText = 'CLIENT RUNTIME (OFFLINE READY)';
-  statusLabel.style.color = 'var(--primary)';
+  // Client-Side / Cloud Runtime
+  if (isFirestoreConnected) {
+    statusLabel.innerText = 'ONLINE - FIREBASE CLOUD';
+    statusLabel.style.color = 'var(--primary)';
+  } else {
+    statusLabel.innerText = 'ONLINE - LOCAL RUNTIME';
+    statusLabel.style.color = 'var(--primary)';
+  }
 
   // Seed coupons
   const storedCoupons = localStorage.getItem('eeefest_coupons');
@@ -195,18 +232,29 @@ async function initStorageAndConnection() {
   }
 }
 
+// Sync changes to Firestore & local storage
+async function syncCouponToCloud(coupon) {
+  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+  if (firestoreDb) {
+    try {
+      await firestoreDb.collection('coupons').doc(coupon.code).set(coupon, { merge: true });
+    } catch (e) {
+      console.warn('Firestore coupon sync note (check security rules):', e.message);
+    }
+  }
+}
+
 // ========================================================
 // AUTH & ADMIN MANAGEMENT
 // ========================================================
 function initAuthUI() {
-  const authNav = document.getElementById('authNavContainer');
   const loginModal = document.getElementById('loginModal');
   const openLoginBtn = document.getElementById('openLoginBtn');
   const closeLoginBtn = document.getElementById('closeLoginModalBtn');
   const loginForm = document.getElementById('adminLoginForm');
   const loginErrorMsg = document.getElementById('loginErrorMsg');
 
-  // Render Navbar auth state
   renderAuthNavbar();
 
   if (openLoginBtn) {
@@ -241,34 +289,38 @@ function initAuthUI() {
           localStorage.setItem('eeefest_logged_admin', JSON.stringify(currentAdmin));
           loginModal.style.display = 'none';
           renderAuthNavbar();
+          autoSelectAllowedTab();
           updateUIForCurrentCategory();
           sfx.playSuccess();
+          return;
         } else {
           loginErrorMsg.innerText = data.message || 'Login failed';
           loginErrorMsg.style.display = 'block';
           sfx.playError();
+          return;
         }
+      }
+
+      // Offline / Cloud Auth check
+      const admin = localAdmins.find(a => a.email.toLowerCase() === email && a.password === password);
+      if (admin) {
+        currentAdmin = {
+          id: admin.id,
+          name: admin.name,
+          email: admin.email,
+          role: admin.role,
+          allowed_sections: admin.allowed_sections
+        };
+        localStorage.setItem('eeefest_logged_admin', JSON.stringify(currentAdmin));
+        loginModal.style.display = 'none';
+        renderAuthNavbar();
+        autoSelectAllowedTab();
+        updateUIForCurrentCategory();
+        sfx.playSuccess();
       } else {
-        // Offline Auth
-        const admin = localAdmins.find(a => a.email.toLowerCase() === email && a.password === password);
-        if (admin) {
-          currentAdmin = {
-            id: admin.id,
-            name: admin.name,
-            email: admin.email,
-            role: admin.role,
-            allowed_sections: admin.allowed_sections
-          };
-          localStorage.setItem('eeefest_logged_admin', JSON.stringify(currentAdmin));
-          loginModal.style.display = 'none';
-          renderAuthNavbar();
-          updateUIForCurrentCategory();
-          sfx.playSuccess();
-        } else {
-          loginErrorMsg.innerText = 'Invalid email or password.';
-          loginErrorMsg.style.display = 'block';
-          sfx.playError();
-        }
+        loginErrorMsg.innerText = 'Invalid email or password.';
+        loginErrorMsg.style.display = 'block';
+        sfx.playError();
       }
     } catch (err) {
       loginErrorMsg.innerText = 'Connection error during login.';
@@ -277,16 +329,33 @@ function initAuthUI() {
   });
 }
 
+function autoSelectAllowedTab() {
+  if (!currentAdmin) return;
+  if (currentAdmin.role === 'superadmin') return;
+
+  const allowed = currentAdmin.allowed_sections || [];
+  if (allowed.length === 1) {
+    currentCategory = allowed[0];
+    document.querySelectorAll('.cat-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.category === currentCategory);
+    });
+  } else if (!allowed.includes(currentCategory) && allowed.length > 0) {
+    currentCategory = allowed[0];
+    document.querySelectorAll('.cat-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.category === currentCategory);
+    });
+  }
+}
+
 function renderAuthNavbar() {
   const authNav = document.getElementById('authNavContainer');
   const superDeck = document.getElementById('superAdminDeck');
 
   if (!currentAdmin) {
-    // Guest / Not logged in
     authNav.innerHTML = `
       <button id="openLoginBtn" class="btn btn-sm btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-        Admin Login
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+        Admin Sign In
       </button>
     `;
     document.getElementById('openLoginBtn').addEventListener('click', () => {
@@ -294,15 +363,14 @@ function renderAuthNavbar() {
     });
     if (superDeck) superDeck.style.display = 'none';
   } else {
-    // Logged in
     const isSuper = currentAdmin.role === 'superadmin';
     const sectionsText = isSuper ? 'ALL SECTIONS' : currentAdmin.allowed_sections.map(s => s.toUpperCase()).join(', ');
-    
+
     authNav.innerHTML = `
       <div class="user-badge">
-        <span>👤 <strong>${currentAdmin.name}</strong></span>
+        <span><strong>${currentAdmin.name}</strong></span>
         <span class="role-tag ${isSuper ? 'superadmin' : ''}">${isSuper ? 'SUPER ADMIN' : sectionsText}</span>
-        <button id="logoutBtn" class="btn btn-sm btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; margin-left: 0.25rem;">Logout</button>
+        <button id="logoutBtn" class="btn btn-sm btn-secondary" style="padding: 0.15rem 0.5rem; font-size: 0.72rem; margin-left: 0.25rem;">Sign Out</button>
       </div>
     `;
 
@@ -311,6 +379,7 @@ function renderAuthNavbar() {
       localStorage.removeItem('eeefest_logged_admin');
       renderAuthNavbar();
       updateUIForCurrentCategory();
+      refreshStatsAndTable();
     });
 
     if (superDeck) {
@@ -324,14 +393,13 @@ function renderAuthNavbar() {
   }
 }
 
-// Window helper for quick demo fill
 window.fillLoginForm = function(email, password) {
   document.getElementById('loginEmailInput').value = email;
   document.getElementById('loginPasswordInput').value = password;
 };
 
 // ========================================================
-// SUPER ADMIN SECTION CONTROLS & ADMIN ROSTER
+// SUPER ADMIN CONTROLS (SECTIONS & ADMIN ROSTER)
 // ========================================================
 function initSuperAdminControls() {
   const toggleRaffle = document.getElementById('toggleRaffle');
@@ -354,11 +422,14 @@ function initSuperAdminControls() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(settingsState)
         });
-      } catch (e) {
-        console.error('Failed to sync settings with live server', e);
-      }
-    } else {
-      localStorage.setItem('eeefest_settings', JSON.stringify(settingsState));
+      } catch (e) {}
+    }
+
+    localStorage.setItem('eeefest_settings', JSON.stringify(settingsState));
+    if (firestoreDb) {
+      try {
+        await firestoreDb.collection('settings').doc('global').set(settingsState, { merge: true });
+      } catch (e) {}
     }
 
     updateUIForCurrentCategory();
@@ -387,7 +458,7 @@ function initSuperAdminControls() {
       const name = document.getElementById('newAdminName').value.trim();
       const email = document.getElementById('newAdminEmail').value.trim().toLowerCase();
       const password = document.getElementById('newAdminPassword').value.trim();
-      
+
       const allowed = [];
       if (document.getElementById('permRaffle').checked) allowed.push('raffle');
       if (document.getElementById('permLunch').checked) allowed.push('lunch');
@@ -404,93 +475,63 @@ function initSuperAdminControls() {
         return;
       }
 
+      if (localAdmins.some(a => a.email.toLowerCase() === email)) {
+        msgBox.innerText = `An admin account with email "${email}" already exists.`;
+        msgBox.style.background = 'var(--danger-bg)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+        sfx.playError();
+        return;
+      }
+
+      const newAdmin = {
+        id: `admin_${Date.now()}`,
+        name,
+        email,
+        password,
+        role: 'admin',
+        allowed_sections: allowed,
+        created_at: new Date().toLocaleString()
+      };
+
+      localAdmins.push(newAdmin);
+      localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
+
+      if (firestoreDb) {
+        try {
+          await firestoreDb.collection('admins').doc(newAdmin.id).set(newAdmin);
+        } catch (e) {}
+      }
+
       if (isLiveApi) {
         try {
-          const res = await fetch('/api/admins', {
+          await fetch('/api/admins', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, allowed_sections: allowed })
+            body: JSON.stringify(newAdmin)
           });
-          const data = await res.json();
-          if (data.success) {
-            msgBox.innerText = data.message;
-            msgBox.style.background = 'var(--success-bg)';
-            msgBox.style.color = 'var(--success)';
-            msgBox.style.display = 'block';
-            addAdminForm.reset();
-            document.getElementById('permRaffle').checked = true;
-            document.getElementById('permLunch').checked = true;
-            document.getElementById('permTshirt').checked = true;
-            loadAdminsTable();
-            sfx.playSuccess();
-          } else {
-            msgBox.innerText = data.message;
-            msgBox.style.background = 'var(--danger-bg)';
-            msgBox.style.color = '#ff80ab';
-            msgBox.style.display = 'block';
-            sfx.playError();
-          }
-        } catch (err) {
-          msgBox.innerText = 'Network error saving admin.';
-          msgBox.style.background = 'var(--danger-bg)';
-          msgBox.style.color = '#ff80ab';
-          msgBox.style.display = 'block';
-        }
-      } else {
-        // Offline add admin
-        if (localAdmins.some(a => a.email.toLowerCase() === email)) {
-          msgBox.innerText = `Admin with email '${email}' already exists.`;
-          msgBox.style.background = 'var(--danger-bg)';
-          msgBox.style.color = '#ff80ab';
-          msgBox.style.display = 'block';
-          sfx.playError();
-          return;
-        }
-
-        const newAdmin = {
-          id: `admin_${Date.now()}`,
-          name,
-          email,
-          password,
-          role: 'admin',
-          allowed_sections: allowed,
-          created_at: new Date().toLocaleString()
-        };
-
-        localAdmins.push(newAdmin);
-        localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
-        msgBox.innerText = `Admin '${name}' successfully added!`;
-        msgBox.style.background = 'var(--success-bg)';
-        msgBox.style.color = 'var(--success)';
-        msgBox.style.display = 'block';
-        addAdminForm.reset();
-        document.getElementById('permRaffle').checked = true;
-        document.getElementById('permLunch').checked = true;
-        document.getElementById('permTshirt').checked = true;
-        loadAdminsTable();
-        sfx.playSuccess();
+        } catch (e) {}
       }
+
+      msgBox.innerText = `Admin "${name}" (${email}) created successfully!`;
+      msgBox.style.background = 'var(--success-bg)';
+      msgBox.style.color = 'var(--success)';
+      msgBox.style.display = 'block';
+      addAdminForm.reset();
+      document.getElementById('permRaffle').checked = true;
+      document.getElementById('permLunch').checked = true;
+      document.getElementById('permTshirt').checked = true;
+      loadAdminsTable();
+      sfx.playSuccess();
     });
   }
 }
 
 async function loadAdminsTable() {
   const tbody = document.getElementById('adminListTableBody');
-  tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2">Loading admins...</td></tr>';
 
-  let list = [];
-  if (isLiveApi) {
-    try {
-      const res = await fetch('/api/admins');
-      const data = await res.json();
-      list = data.admins || [];
-    } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-danger">Failed to load admins.</td></tr>';
-      return;
-    }
-  } else {
-    list = localAdmins;
-  }
+  let list = localAdmins;
 
   if (list.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2">No admins registered.</td></tr>';
@@ -500,11 +541,11 @@ async function loadAdminsTable() {
   tbody.innerHTML = list.map(a => {
     const isSuper = a.role === 'superadmin';
     const tags = isSuper 
-      ? '<span class="section-tag raffle">ALL</span>' 
+      ? '<span class="section-tag raffle">ALL SECTIONS</span>' 
       : (a.allowed_sections || []).map(s => `<span class="section-tag ${s}">${s.toUpperCase()}</span>`).join('');
 
     const deleteBtn = isSuper 
-      ? '<span style="color: var(--text-dim); font-size: 0.75rem;">Protected</span>' 
+      ? '<span style="color: var(--text-dim); font-size: 0.72rem;">Protected</span>' 
       : `<button class="btn btn-sm btn-danger" onclick="deleteAdminAccount('${a.id}', '${a.name}')" style="padding: 0.15rem 0.5rem; font-size: 0.72rem;">Delete</button>`;
 
     return `
@@ -520,29 +561,23 @@ async function loadAdminsTable() {
 }
 
 window.deleteAdminAccount = async function(id, name) {
-  if (!confirm(`Are you sure you want to remove admin "${name}"?`)) return;
+  if (!confirm(`Are you sure you want to remove admin account "${name}"?`)) return;
 
-  if (isLiveApi) {
-    try {
-      const res = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        loadAdminsTable();
-      } else {
-        alert(data.message);
-      }
-    } catch (e) {
-      alert('Failed to delete admin');
-    }
-  } else {
-    localAdmins = localAdmins.filter(a => a.id !== id);
-    localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
-    loadAdminsTable();
+  localAdmins = localAdmins.filter(a => a.id !== id);
+  localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
+
+  if (firestoreDb) {
+    try { await firestoreDb.collection('admins').doc(id).delete(); } catch (e) {}
   }
+  if (isLiveApi) {
+    try { await fetch(`/api/admins/${id}`, { method: 'DELETE' }); } catch (e) {}
+  }
+
+  loadAdminsTable();
 };
 
 // ========================================================
-// CATEGORY TABS & UI PERMISSION GATING
+// CATEGORY TABS & STRICT ADMIN RESTRICTIONS
 // ========================================================
 function initCategoryTabs() {
   const tabs = document.querySelectorAll('.cat-tab');
@@ -550,20 +585,20 @@ function initCategoryTabs() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const targetCategory = tab.dataset.category;
-      
-      // Check if disabled by super admin
-      const isEnabled = isCategoryGloballyEnabled(targetCategory);
-      if (!isEnabled) {
+
+      // 1. Super Admin Global Section Switch Check
+      if (!isCategoryGloballyEnabled(targetCategory)) {
         sfx.playWarning();
-        showLockNotice(`⚠️ Scanning for ${getCategoryTitle(targetCategory)} is currently DISABLED by the Super Admin.`);
+        showLockNotice(`Scanning for ${getCategoryTitle(targetCategory)} is currently DISABLED by the Super Admin.`);
         return;
       }
 
-      // Check if logged in admin has permission
+      // 2. Admin Permission Check: If Super Admin assigned only T-Shirt, admin can ONLY scan for T-Shirt
       if (currentAdmin && currentAdmin.role !== 'superadmin') {
-        if (!currentAdmin.allowed_sections.includes(targetCategory)) {
+        const allowed = currentAdmin.allowed_sections || [];
+        if (!allowed.includes(targetCategory)) {
           sfx.playError();
-          showLockNotice(`⛔ ACCESS DENIED: Your account is only authorized for: ${currentAdmin.allowed_sections.map(s => s.toUpperCase()).join(', ')}.`);
+          showLockNotice(`ACCESS DENIED: Your admin account is only authorized to scan for: ${allowed.map(s => s.toUpperCase()).join(', ')}.`);
           return;
         }
       }
@@ -598,22 +633,21 @@ function updateUIForCurrentCategory() {
   const tabLunch = document.getElementById('tabLunch');
   const tabTshirt = document.getElementById('tabTshirt');
 
-  // Update tabs disabled badges
   const checkTab = (tab, cat) => {
     const badge = tab.querySelector('.tab-badge-off');
     const enabled = isCategoryGloballyEnabled(cat);
     let allowed = true;
     if (currentAdmin && currentAdmin.role !== 'superadmin') {
-      allowed = currentAdmin.allowed_sections.includes(cat);
+      allowed = (currentAdmin.allowed_sections || []).includes(cat);
     }
 
     if (!enabled) {
       tab.classList.add('tab-disabled');
-      badge.innerText = 'OFF';
+      badge.innerText = 'DISABLED';
       badge.style.display = 'inline-block';
     } else if (!allowed) {
       tab.classList.add('tab-disabled');
-      badge.innerText = 'NO ACCESS';
+      badge.innerText = 'UNAUTHORIZED';
       badge.style.display = 'inline-block';
     } else {
       tab.classList.remove('tab-disabled');
@@ -625,21 +659,19 @@ function updateUIForCurrentCategory() {
   checkTab(tabLunch, 'lunch');
   checkTab(tabTshirt, 'tshirt');
 
-  // Pill Title
   if (currentCategory === 'lunch') {
-    pill.innerText = '🍱 Lunch & Drinks Booth';
+    pill.innerText = 'Lunch & Drinks Booth';
   } else if (currentCategory === 'tshirt') {
-    pill.innerText = '👕 T-Shirt Booth';
+    pill.innerText = 'T-Shirt Distribution';
   } else {
-    pill.innerText = '🎟️ Raffle Draw';
+    pill.innerText = 'Raffle Draw Entry';
   }
 
-  // Active category permission check
   const isEnabled = isCategoryGloballyEnabled(currentCategory);
   if (!isEnabled) {
-    showLockNotice(`⚠️ Scanning for ${getCategoryTitle(currentCategory)} is currently DISABLED by the Super Admin.`);
-  } else if (currentAdmin && currentAdmin.role !== 'superadmin' && !currentAdmin.allowed_sections.includes(currentCategory)) {
-    showLockNotice(`⛔ ACCESS DENIED: Your account is only authorized for: ${currentAdmin.allowed_sections.map(s => s.toUpperCase()).join(', ')}.`);
+    showLockNotice(`Scanning for ${getCategoryTitle(currentCategory)} is currently DISABLED by the Super Admin.`);
+  } else if (currentAdmin && currentAdmin.role !== 'superadmin' && !(currentAdmin.allowed_sections || []).includes(currentCategory)) {
+    showLockNotice(`ACCESS DENIED: Your admin account is only authorized to scan for: ${currentAdmin.allowed_sections.map(s => s.toUpperCase()).join(', ')}.`);
   } else {
     hideLockNotice();
   }
@@ -657,7 +689,7 @@ function hideLockNotice() {
 }
 
 // ========================================================
-// VERIFICATION ENGINE (SCANNER + MANUAL)
+// QR SCANNER & MANUAL ENTRY
 // ========================================================
 function initManualForm() {
   const form = document.getElementById('manualEntryForm');
@@ -683,10 +715,7 @@ function initScanner() {
   const selectRow = document.getElementById('cameraSelectRow');
   const select = document.getElementById('cameraSelect');
 
-  if (typeof Html5Qrcode === 'undefined') {
-    console.warn('Html5Qrcode scanner library is unavailable.');
-    return;
-  }
+  if (typeof Html5Qrcode === 'undefined') return;
 
   html5QrCode = new Html5Qrcode('qrReader');
 
@@ -705,9 +734,7 @@ function initScanner() {
         flipBtn.style.display = 'inline-flex';
       }
     }
-  }).catch(err => {
-    console.log('Camera permission prompt or error:', err);
-  });
+  }).catch(err => console.log('Camera init:', err));
 
   toggleBtn.addEventListener('click', () => {
     sfx.init();
@@ -727,13 +754,6 @@ function initScanner() {
       }
     }
   });
-
-  select.addEventListener('change', () => {
-    currentCameraIndex = select.selectedIndex;
-    if (isScannerRunning) {
-      stopScanner().then(() => startScanner());
-    }
-  });
 }
 
 function startScanner() {
@@ -746,7 +766,7 @@ function startScanner() {
 
   html5QrCode.start(
     cameraId,
-    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+    { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
     onQrCodeSuccess,
     () => {}
   ).then(() => {
@@ -755,7 +775,6 @@ function startScanner() {
     toggleBtn.classList.replace('btn-primary', 'btn-danger');
     overlay.style.display = 'flex';
   }).catch(err => {
-    console.error('Failed to start camera:', err);
     alert('Unable to access camera. Please allow camera permissions in your browser.');
   });
 }
@@ -771,21 +790,19 @@ function stopScanner() {
     toggleBtn.innerText = 'Start Camera';
     toggleBtn.classList.replace('btn-danger', 'btn-primary');
     overlay.style.display = 'none';
-  }).catch(err => console.error('Error stopping camera:', err));
+  }).catch(err => console.error(err));
 }
 
 function onQrCodeSuccess(decodedText) {
   const now = Date.now();
-  if (decodedText === lastScannedCode && (now - lastScanTime < 3000)) {
-    return; // Debounce rapid repeated frames
-  }
+  if (decodedText === lastScannedCode && (now - lastScanTime < 3000)) return;
   lastScannedCode = decodedText;
   lastScanTime = now;
   verifyCode(decodedText);
 }
 
 // ========================================================
-// CORE VERIFICATION ROUTINE
+// CORE VERIFICATION ENGINE & DUPLICATE BLOCKING
 // ========================================================
 async function verifyCode(rawCode) {
   let cleanCode = rawCode.trim().toUpperCase();
@@ -795,134 +812,94 @@ async function verifyCode(rawCode) {
     cleanCode = cleanCode.split('/').pop().trim();
   }
 
-  // Pre-check 1: Is this section active?
+  const categoryName = getCategoryTitle(currentCategory);
+
+  // Check 1: Super Admin global toggle
   if (!isCategoryGloballyEnabled(currentCategory)) {
     sfx.playWarning();
-    renderResultBox('DISABLED', `Scanning for ${getCategoryTitle(currentCategory)} is currently DISABLED by the Super Admin.`);
-    addActivityLog({
-      time: new Date().toLocaleTimeString(),
-      code: cleanCode,
-      status: 'DISABLED',
-      category: getCategoryTitle(currentCategory),
-      message: 'Scan rejected: Section disabled'
-    });
+    const msg = `SECTION DISABLED: Scanning for ${categoryName} is currently DISABLED by the Super Admin.`;
+    renderResultBox('DISABLED', msg);
+    addActivityLog({ time: new Date().toLocaleTimeString(), code: cleanCode, status: 'DISABLED', category: categoryName, message: msg });
     return;
   }
 
-  // Pre-check 2: Is admin authorized?
+  // Check 2: Admin authorized section
   if (currentAdmin && currentAdmin.role !== 'superadmin') {
-    if (!currentAdmin.allowed_sections.includes(currentCategory)) {
+    const allowed = currentAdmin.allowed_sections || [];
+    if (!allowed.includes(currentCategory)) {
       sfx.playError();
-      renderResultBox('DENIED', `ACCESS DENIED: Your admin account is not authorized to scan for ${getCategoryTitle(currentCategory)}.`);
-      addActivityLog({
-        time: new Date().toLocaleTimeString(),
-        code: cleanCode,
-        status: 'DENIED',
-        category: getCategoryTitle(currentCategory),
-        message: 'Permission denied for current admin'
-      });
+      const msg = `ACCESS DENIED: Your admin account is only authorized to scan for: ${allowed.map(s => s.toUpperCase()).join(', ')}.`;
+      renderResultBox('DENIED', msg);
+      addActivityLog({ time: new Date().toLocaleTimeString(), code: cleanCode, status: 'DENIED', category: categoryName, message: msg });
       return;
     }
   }
 
-  const adminEmail = currentAdmin ? currentAdmin.email : '';
   const adminName = currentAdmin ? currentAdmin.name : 'Admin Desk';
-
-  if (isLiveApi) {
-    try {
-      const res = await fetch('/api/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: cleanCode,
-          category: currentCategory,
-          admin_email: adminEmail
-        })
-      });
-      const data = await res.json();
-      handleVerifyResponse(data, cleanCode);
-    } catch (err) {
-      console.error('Verify error:', err);
-      renderResultBox('ERROR', 'Network connection error during verification.');
-    }
-  } else {
-    // Offline verification engine
-    handleOfflineVerify(cleanCode, adminName);
-  }
-}
-
-function handleVerifyResponse(data, code) {
-  if (data.status === 'SUCCESS') {
-    sfx.playSuccess();
-    renderResultBox('SUCCESS', data.message, data.coupon);
-  } else if (data.status === 'ALREADY_SUBMITTED') {
-    sfx.playWarning();
-    renderResultBox('ALREADY_SUBMITTED', data.message, data.coupon);
-  } else if (data.status === 'COUNTERFEIT') {
-    sfx.playError();
-    renderResultBox('COUNTERFEIT', data.message);
-  } else {
-    sfx.playError();
-    renderResultBox('DENIED', data.message);
-  }
-  refreshStatsAndTable();
-}
-
-function handleOfflineVerify(cleanCode, adminName) {
   const timestamp = new Date().toLocaleString();
+
+  // Find Coupon in database
   const coupon = localCoupons.find(c => c.code.toUpperCase() === cleanCode);
 
-  let statusKey, timeKey, byKey, actionName, claimedVal;
+  let statusKey, timeKey, byKey, claimedVal;
   if (currentCategory === 'lunch') {
     statusKey = 'lunch_status';
     timeKey = 'lunch_redeemed_at';
     byKey = 'lunch_scanned_by';
-    actionName = 'Lunch & Drinks';
     claimedVal = 'REDEEMED';
   } else if (currentCategory === 'tshirt') {
     statusKey = 'tshirt_status';
     timeKey = 'tshirt_redeemed_at';
     byKey = 'tshirt_scanned_by';
-    actionName = 'T-Shirt';
     claimedVal = 'REDEEMED';
   } else {
     statusKey = 'raffle_status';
     timeKey = 'raffle_submitted_at';
     byKey = 'raffle_scanned_by';
-    actionName = 'Raffle Draw';
     claimedVal = 'SUBMITTED';
   }
 
-  // 1. Counterfeit Check
+  // Check 3: Counterfeit Check
   if (!coupon) {
     sfx.playError();
-    const msg = `COUNTERFEIT ALERT! Code '${cleanCode}' does NOT exist in the official EEE FEST 2026 database.`;
+    const msg = `COUNTERFEIT ALERT: Code "${cleanCode}" does NOT exist in the official EEE FEST 2026 database.`;
     renderResultBox('COUNTERFEIT', msg);
-    addActivityLog({ time: timestamp, code: cleanCode, status: 'COUNTERFEIT', category: actionName, message: msg });
+    addActivityLog({ time: timestamp, code: cleanCode, status: 'COUNTERFEIT', category: categoryName, message: msg });
     return;
   }
 
-  // 2. Duplicate Check
+  // Check 4: Duplicate Entry Check
   if (coupon[statusKey] === claimedVal) {
     sfx.playWarning();
     const prevTime = coupon[timeKey] || 'Earlier';
-    const prevBy = coupon[byKey] || 'Admin';
-    const msg = `ALREADY SUBMITTED! Coupon #${String(coupon.serial).padStart(4, '0')} (${cleanCode}) was already registered for ${actionName} on ${prevTime} by ${prevBy}. Duplicate entry blocked!`;
+    const prevBy = coupon[byKey] || 'Another Admin';
+    const msg = `DUPLICATE ENTRY DETECTED: Coupon #${String(coupon.serial).padStart(4, '0')} (${cleanCode}) was already registered for ${categoryName} on ${prevTime} by ${prevBy}. Duplicate entry blocked!`;
     renderResultBox('ALREADY_SUBMITTED', msg, coupon);
-    addActivityLog({ time: timestamp, code: cleanCode, serial: coupon.serial, status: 'ALREADY_SUBMITTED', category: actionName, message: msg });
+    addActivityLog({ time: timestamp, code: cleanCode, serial: coupon.serial, status: 'ALREADY_SUBMITTED', category: categoryName, message: msg });
     return;
   }
 
-  // 3. Mark as redeemed
+  // Valid Scan: Mark as Submitted / Redeemed
   coupon[statusKey] = claimedVal;
   coupon[timeKey] = timestamp;
   coupon[byKey] = adminName;
-  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+  await syncCouponToCloud(coupon);
+
+  if (isLiveApi) {
+    try {
+      await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: cleanCode, category: currentCategory, admin_email: currentAdmin ? currentAdmin.email : '' })
+      });
+    } catch (e) {}
+  }
 
   sfx.playSuccess();
-  const msg = `VERIFIED! Coupon #${String(coupon.serial).padStart(4, '0')} (${cleanCode}) successfully registered for ${actionName} by ${adminName}.`;
+  const msg = `SUCCESS: Coupon #${String(coupon.serial).padStart(4, '0')} (${cleanCode}) successfully verified and registered for ${categoryName} by ${adminName}.`;
   renderResultBox('SUCCESS', msg, coupon);
-  addActivityLog({ time: timestamp, code: cleanCode, serial: coupon.serial, status: 'SUCCESS', category: actionName, message: `Verified & redeemed by ${adminName}` });
+  addActivityLog({ time: timestamp, code: cleanCode, serial: coupon.serial, status: 'SUCCESS', category: categoryName, message: `Verified by ${adminName}` });
   refreshStatsAndTable();
 }
 
@@ -936,25 +913,26 @@ function renderResultBox(status, message, coupon = null) {
   if (status === 'SUCCESS') {
     box.classList.add('result-valid');
     title = 'VALID & REGISTERED';
-    iconSvg = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+    iconSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
   } else if (status === 'ALREADY_SUBMITTED') {
     box.classList.add('result-warning');
     title = 'DUPLICATE ENTRY DETECTED';
-    iconSvg = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+    iconSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
   } else if (status === 'COUNTERFEIT') {
     box.classList.add('result-invalid');
-    title = 'COUNTERFEIT DETECTED';
-    iconSvg = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></line><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+    title = 'COUNTERFEIT ALERT';
+    iconSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
   } else {
     box.classList.add('result-warning');
     title = 'ACTION BLOCKED';
-    iconSvg = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+    iconSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
   }
 
   let extraDetails = '';
+  let actionButtons = '';
   if (coupon) {
     extraDetails = `
-      <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(255,255,255,0.15); display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem;">
+      <div style="margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px dashed rgba(255,255,255,0.15); display: flex; gap: 0.85rem; flex-wrap: wrap; font-size: 0.82rem;">
         <div>SL: <strong>#${String(coupon.serial).padStart(4, '0')}</strong></div>
         <div>Code: <strong>${coupon.code}</strong></div>
         <div>Raffle: <strong>${coupon.raffle_status}</strong></div>
@@ -962,14 +940,22 @@ function renderResultBox(status, message, coupon = null) {
         <div>T-Shirt: <strong>${coupon.tshirt_status}</strong></div>
       </div>
     `;
+
+    actionButtons = `
+      <div class="result-actions">
+        <button class="btn btn-sm btn-secondary" onclick="resetCouponCode('${coupon.code}')">Reset Status</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCouponCode('${coupon.code}')">Delete Coupon</button>
+      </div>
+    `;
   }
 
   box.innerHTML = `
     <div class="result-icon">${iconSvg}</div>
-    <div class="result-body">
+    <div class="result-body" style="flex: 1;">
       <h3 class="result-title">${title}</h3>
       <p class="result-message">${message}</p>
       ${extraDetails}
+      ${actionButtons}
     </div>
   `;
 }
@@ -979,7 +965,7 @@ function resetResultBox() {
   box.className = 'result-box result-standby';
   box.innerHTML = `
     <div class="result-icon">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
     </div>
     <div class="result-body">
       <h3 class="result-title">Ready to Scan</h3>
@@ -989,12 +975,229 @@ function resetResultBox() {
 }
 
 // ========================================================
+// RESET & DELETE ENTRY FUNCTIONS
+// ========================================================
+window.resetCouponCode = async function(code) {
+  if (!confirm(`Reset verification status for Coupon ${code} back to AVAILABLE?`)) return;
+
+  const coupon = localCoupons.find(c => c.code === code);
+  if (coupon) {
+    if (currentCategory === 'lunch') {
+      coupon.lunch_status = 'AVAILABLE';
+      coupon.lunch_redeemed_at = '';
+      coupon.lunch_scanned_by = '';
+    } else if (currentCategory === 'tshirt') {
+      coupon.tshirt_status = 'AVAILABLE';
+      coupon.tshirt_redeemed_at = '';
+      coupon.tshirt_scanned_by = '';
+    } else {
+      coupon.raffle_status = 'AVAILABLE';
+      coupon.raffle_submitted_at = '';
+      coupon.raffle_scanned_by = '';
+    }
+
+    await syncCouponToCloud(coupon);
+
+    if (isLiveApi) {
+      try {
+        await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, category: currentCategory })
+        });
+      } catch (e) {}
+    }
+
+    renderResultBox('SUCCESS', `Coupon ${code} status reset to AVAILABLE.`, coupon);
+    refreshStatsAndTable();
+  }
+};
+
+window.deleteCouponCode = async function(code) {
+  if (!confirm(`Are you sure you want to permanently DELETE Coupon ${code} from the database?`)) return;
+
+  localCoupons = localCoupons.filter(c => c.code !== code);
+  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+  if (firestoreDb) {
+    try { await firestoreDb.collection('coupons').doc(code).delete(); } catch (e) {}
+  }
+
+  if (isLiveApi) {
+    try { await fetch(`/api/coupons/${code}`, { method: 'DELETE' }); } catch (e) {}
+  }
+
+  resetResultBox();
+  refreshStatsAndTable();
+};
+
+// ========================================================
+// DYNAMIC COUPON GENERATION (SUPER ADMIN FEATURE)
+// ========================================================
+function initAddonCouponModal() {
+  const openBtn = document.getElementById('openAddonModalBtn');
+  const modal = document.getElementById('addonModal');
+  const closeBtn = document.getElementById('closeAddonModalBtn');
+  const form = document.getElementById('addonCouponForm');
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      document.getElementById('addonMsg').style.display = 'none';
+      modal.style.display = 'flex';
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const count = parseInt(document.getElementById('addonCountInput').value, 10) || 4;
+      const msgBox = document.getElementById('addonMsg');
+      const submitBtn = document.getElementById('addonSubmitBtn');
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Generating Batch & PDF...';
+      msgBox.style.display = 'none';
+
+      try {
+        if (isLiveApi) {
+          const res = await fetch('/api/generate-addon', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localCoupons.push(...data.new_coupons);
+            localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+            
+            // Trigger PDF Download
+            window.location.href = data.pdf_download_url;
+
+            msgBox.innerText = `Success! ${count} new coupons generated and added to database. PDF download started.`;
+            msgBox.style.background = 'var(--success-bg)';
+            msgBox.style.color = 'var(--success)';
+            msgBox.style.display = 'block';
+            refreshStatsAndTable();
+            sfx.playSuccess();
+            return;
+          }
+        }
+
+        // Client-side batch generator
+        await generateAddonBatchClientSide(count);
+        msgBox.innerText = `Success! ${count} new coupons generated and added to database.`;
+        msgBox.style.background = 'var(--success-bg)';
+        msgBox.style.color = 'var(--success)';
+        msgBox.style.display = 'block';
+        refreshStatsAndTable();
+        sfx.playSuccess();
+      } catch (err) {
+        msgBox.innerText = 'Error generating coupons: ' + err.message;
+        msgBox.style.background = 'var(--danger-bg)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Generate & Download PDF';
+      }
+    });
+  }
+}
+
+async function generateAddonBatchClientSide(count) {
+  const CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const DIGITS = "23456789";
+
+  const existingCodes = new Set(localCoupons.map(c => c.code.toUpperCase()));
+  const newCodes = [];
+
+  while (newCodes.length < count) {
+    const l1 = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+    const d1 = DIGITS[Math.floor(Math.random() * DIGITS.length)];
+    const c1 = CHARS[Math.floor(Math.random() * CHARS.length)];
+    const c2 = CHARS[Math.floor(Math.random() * CHARS.length)];
+    const arr = [l1, d1, c1, c2].sort(() => Math.random() - 0.5);
+    const code = arr.join('');
+    if (!existingCodes.has(code) && !newCodes.includes(code)) {
+      newCodes.push(code);
+    }
+  }
+
+  const startSerial = localCoupons.length + 1;
+  const newRecords = [];
+
+  for (let i = 0; i < newCodes.length; i++) {
+    const code = newCodes[i];
+    const rec = {
+      serial: startSerial + i,
+      code: code,
+      qr_data: code,
+      raffle_status: 'AVAILABLE',
+      raffle_submitted_at: '',
+      raffle_scanned_by: '',
+      lunch_status: 'AVAILABLE',
+      lunch_redeemed_at: '',
+      lunch_scanned_by: '',
+      tshirt_status: 'AVAILABLE',
+      tshirt_redeemed_at: '',
+      tshirt_scanned_by: '',
+      qr_file: `QR_${String(startSerial + i).padStart(4, '0')}_${code}_maroon.png`
+    };
+    localCoupons.push(rec);
+    newRecords.push(rec);
+    if (firestoreDb) {
+      try { firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
+    }
+  }
+
+  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+  // Client-side PDF generation if jsPDF is available
+  if (typeof window.jspdf !== 'undefined') {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const cw = 565.0;
+    const ch = cw * (975.0 / 2909.0);
+    const x0 = (pw - cw) / 2.0;
+
+    const pages = Math.ceil(newCodes.length / 4);
+    for (let p = 0; p < pages; p++) {
+      if (p > 0) doc.addPage();
+      const pageCodes = newCodes.slice(p * 4, (p + 1) * 4);
+      for (let i = 0; i < pageCodes.length; i++) {
+        const cCode = pageCodes[i];
+        const y0 = 18.0 + i * (ch + 16.0);
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x0, y0, cw, ch);
+        doc.setFontSize(14);
+        doc.setTextColor(73, 37, 45);
+        doc.text(`EEE FEST 2026 - Coupon: ${cCode}`, x0 + 20, y0 + 30);
+      }
+    }
+    doc.save(`EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`);
+  }
+}
+
+// ========================================================
 // ACTIVITY LOG & STATS
 // ========================================================
 function addActivityLog(entry) {
   localActivity.unshift(entry);
   if (localActivity.length > 20) localActivity.pop();
   renderActivityList(localActivity);
+
+  if (firestoreDb) {
+    try { firestoreDb.collection('activity').add(entry); } catch (e) {}
+  }
 }
 
 function renderActivityList(items) {
@@ -1015,7 +1218,7 @@ function renderActivityList(items) {
         <div class="activity-left">
           <span class="${badgeClass}">${item.status}</span>
           <span class="activity-code">${item.code}</span>
-          <span style="font-size: 0.78rem; color: var(--text-dim);">${item.category || ''}</span>
+          <span style="font-size: 0.75rem; color: var(--text-dim);">${item.category || ''}</span>
         </div>
         <div class="activity-right">
           <span class="activity-time">${item.time}</span>
@@ -1025,9 +1228,6 @@ function renderActivityList(items) {
   }).join('');
 }
 
-// ========================================================
-// STATS & MASTER TABLE CONTROLS
-// ========================================================
 async function refreshStatsAndTable() {
   await fetchStats();
   await fetchCoupons();
@@ -1040,23 +1240,6 @@ async function fetchStats() {
   const statPercent = document.getElementById('statPercent');
   const progressBar = document.getElementById('statProgressBar');
 
-  if (isLiveApi) {
-    try {
-      const res = await fetch(`/api/stats?category=${currentCategory}`);
-      const data = await res.json();
-      statTotal.innerText = data.total.toLocaleString();
-      statSubmitted.innerText = data.submitted.toLocaleString();
-      statRemaining.innerText = data.remaining.toLocaleString();
-      statPercent.innerText = `${data.percentage}% completion`;
-      progressBar.style.width = `${data.percentage}%`;
-      renderActivityList(data.recent_activity);
-      return;
-    } catch (e) {
-      console.warn('Stats fetch error, falling back to local memory');
-    }
-  }
-
-  // Offline stats
   const total = localCoupons.length;
   let submitted = 0;
   if (currentCategory === 'lunch') {
@@ -1116,42 +1299,21 @@ async function fetchCoupons() {
   const prevBtn = document.getElementById('prevPageBtn');
   const nextBtn = document.getElementById('nextPageBtn');
 
-  let items = [];
-  let totalFiltered = 0;
+  let filtered = localCoupons;
+  const statusKey = currentCategory === 'lunch' ? 'lunch_status' : (currentCategory === 'tshirt' ? 'tshirt_status' : 'raffle_status');
+  const claimedVal = currentCategory in {'lunch':1, 'tshirt':1} ? 'REDEEMED' : 'SUBMITTED';
 
-  if (isLiveApi) {
-    try {
-      const url = `/api/coupons?q=${encodeURIComponent(searchQuery)}&status=${statusFilter}&category=${currentCategory}&page=${currentPage}&per_page=${itemsPerPage}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      items = data.items;
-      totalFiltered = data.total;
-    } catch (e) {
-      console.warn('Coupons table fetch error, falling back to local');
-    }
+  if (searchQuery) {
+    filtered = filtered.filter(c => c.code.includes(searchQuery) || String(c.serial) === searchQuery || `#${String(c.serial).padStart(4, '0')}`.includes(searchQuery));
   }
 
-  if (!isLiveApi || items.length === 0) {
-    let filtered = localCoupons;
-    const statusKey = currentCategory === 'lunch' ? 'lunch_status' : (currentCategory === 'tshirt' ? 'tshirt_status' : 'raffle_status');
-    const claimedVal = currentCategory in {'lunch':1, 'tshirt':1} ? 'REDEEMED' : 'SUBMITTED';
-
-    if (searchQuery) {
-      filtered = filtered.filter(c => c.code.includes(searchQuery) || String(c.serial) === searchQuery || `#${String(c.serial).padStart(4, '0')}`.includes(searchQuery));
-    }
-
-    if (statusFilter === 'submitted') {
-      filtered = filtered.filter(c => c[statusKey] === claimedVal);
-    } else if (statusFilter === 'available') {
-      filtered = filtered.filter(c => c[statusKey] === 'AVAILABLE');
-    }
-
-    totalFiltered = filtered.length;
-    const start = (currentPage - 1) * itemsPerPage;
-    items = filtered.slice(start, start + itemsPerPage);
+  if (statusFilter === 'submitted') {
+    filtered = filtered.filter(c => c[statusKey] === claimedVal);
+  } else if (statusFilter === 'available') {
+    filtered = filtered.filter(c => c[statusKey] === 'AVAILABLE');
   }
 
-  // Update pagination indicators
+  const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / itemsPerPage));
   if (currentPage > totalPages) currentPage = totalPages;
 
@@ -1162,6 +1324,9 @@ async function fetchCoupons() {
 
   prevBtn.disabled = (currentPage <= 1);
   nextBtn.disabled = (currentPage >= totalPages);
+
+  const start = (currentPage - 1) * itemsPerPage;
+  const items = filtered.slice(start, start + itemsPerPage);
 
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">No matching coupons found.</td></tr>';
@@ -1190,56 +1355,20 @@ async function fetchCoupons() {
         <td>${rBadge}</td>
         <td>${lBadge}</td>
         <td>${tBadge}</td>
-        <td style="font-size: 0.8rem; color: var(--text-muted);">${lastBy}</td>
+        <td style="font-size: 0.78rem; color: var(--text-muted);">${lastBy}</td>
         <td>
-          <button class="btn btn-sm btn-secondary" onclick="resetCouponCode('${c.code}')" style="padding: 0.2rem 0.55rem; font-size: 0.75rem;">Reset</button>
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="btn btn-sm btn-secondary" onclick="resetCouponCode('${c.code}')" style="padding: 0.15rem 0.45rem; font-size: 0.72rem;">Reset</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteCouponCode('${c.code}')" style="padding: 0.15rem 0.45rem; font-size: 0.72rem;">Delete</button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
 }
 
-window.resetCouponCode = async function(code) {
-  if (!confirm(`Are you sure you want to reset Coupon ${code} to AVAILABLE for ${getCategoryTitle(currentCategory)}?`)) return;
-
-  if (isLiveApi) {
-    try {
-      const res = await fetch('/api/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, category: currentCategory })
-      });
-      const data = await res.json();
-      if (data.success) {
-        refreshStatsAndTable();
-      }
-    } catch (e) {
-      alert('Reset error');
-    }
-  } else {
-    const coupon = localCoupons.find(c => c.code === code);
-    if (coupon) {
-      if (currentCategory === 'lunch') {
-        coupon.lunch_status = 'AVAILABLE';
-        coupon.lunch_redeemed_at = '';
-        coupon.lunch_scanned_by = '';
-      } else if (currentCategory === 'tshirt') {
-        coupon.tshirt_status = 'AVAILABLE';
-        coupon.tshirt_redeemed_at = '';
-        coupon.tshirt_scanned_by = '';
-      } else {
-        coupon.raffle_status = 'AVAILABLE';
-        coupon.raffle_submitted_at = '';
-        coupon.raffle_scanned_by = '';
-      }
-      localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
-      refreshStatsAndTable();
-    }
-  }
-};
-
 // ========================================================
-// EXPORT EXCEL & CSV UTILITY
+// EXPORT EXCEL
 // ========================================================
 function initExportButton() {
   const exportBtn = document.getElementById('exportBtn');
@@ -1273,7 +1402,7 @@ function exportOfflineCSV() {
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement('a');
   link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `EEE_FEST_2026_Coupons_Export_${Date.now()}.csv`);
+  link.setAttribute('download', `EEE_FEST_2026_Coupons_Master_${Date.now()}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

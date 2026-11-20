@@ -537,6 +537,179 @@ def reset_coupon():
     return jsonify({"success": True, "message": f"Coupon {code} reset to AVAILABLE"})
 
 
+@app.route("/api/coupons/<code_val>", methods=["DELETE"])
+def delete_coupon(code_val):
+    global coupons_list, coupons_by_code
+    clean_code = code_val.strip().upper()
+    if clean_code not in coupons_by_code:
+        return jsonify({"success": False, "message": "Coupon not found"}), 404
+
+    target = coupons_by_code[clean_code]
+    coupons_list = [c for c in coupons_list if c["code"] != clean_code]
+    del coupons_by_code[clean_code]
+
+    save_coupons_database()
+    return jsonify({"success": True, "message": f"Coupon {clean_code} successfully deleted."})
+
+
+ADDON_PDF_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons_Addon.pdf")
+
+@app.route("/api/generate-addon", methods=["POST"])
+def generate_addon_coupons():
+    import random
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    import qrcode
+
+    data = request.get_json() or {}
+    count = int(data.get("count", 4))
+    if count < 1:
+        count = 4
+    if count > 200:
+        count = 200
+
+    CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+    LETTERS = [c for c in CHARS if c.isalpha()]
+    DIGITS = [c for c in CHARS if c.isdigit()]
+
+    existing_codes = set(coupons_by_code.keys())
+    new_codes = []
+    while len(new_codes) < count:
+        c = [random.choice(LETTERS), random.choice(DIGITS), random.choice(CHARS), random.choice(CHARS)]
+        random.shuffle(c)
+        code = "".join(c)
+        if code not in existing_codes and code not in new_codes:
+            new_codes.append(code)
+
+    start_serial = len(coupons_list) + 1
+    new_records = []
+    QR_DIR = os.path.join(BASE_DIR, "qrcodes")
+    os.makedirs(QR_DIR, exist_ok=True)
+
+    MAROON_RGB = (73, 37, 45)
+    BLACK_RGB = (0, 0, 0)
+    BLUE_RGB = (44, 84, 129)
+    MAROON_PDF = (73/255, 37/255, 45/255)
+    BLACK_PDF = (0.0, 0.0, 0.0)
+    BLUE_PDF = (44/255, 84/255, 129/255)
+
+    qr_map = {}
+    for idx_offset, code in enumerate(new_codes):
+        serial = start_serial + idx_offset
+        base_name = f"QR_{serial:04d}_{code}"
+        m_file = os.path.join(QR_DIR, f"{base_name}_maroon.png")
+        k_file = os.path.join(QR_DIR, f"{base_name}_black.png")
+        b_file = os.path.join(QR_DIR, f"{base_name}_blue.png")
+
+        qr = qrcode.QRCode(box_size=3, border=1)
+        qr.add_data(code)
+        qr.make(fit=True)
+        qr.make_image(fill_color=MAROON_RGB, back_color="white").convert("RGB").save(m_file)
+        qr.make_image(fill_color=BLACK_RGB, back_color="white").convert("RGB").save(k_file)
+        qr.make_image(fill_color=BLUE_RGB, back_color="white").convert("RGB").save(b_file)
+
+        qr_map[code] = {
+            "maroon": m_file,
+            "black": k_file,
+            "blue": b_file,
+            "main": f"{base_name}_maroon.png"
+        }
+
+        record = {
+            "serial": serial,
+            "code": code,
+            "qr_data": code,
+            "raffle_status": "AVAILABLE",
+            "raffle_submitted_at": "",
+            "raffle_scanned_by": "",
+            "lunch_status": "AVAILABLE",
+            "lunch_redeemed_at": "",
+            "lunch_scanned_by": "",
+            "tshirt_status": "AVAILABLE",
+            "tshirt_redeemed_at": "",
+            "tshirt_scanned_by": "",
+            "qr_file": f"{base_name}_maroon.png"
+        }
+        coupons_list.append(record)
+        coupons_by_code[code] = record
+        new_records.append(record)
+
+    save_coupons_database()
+
+    # Compile Addon PDF
+    TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST  Cupon - 2026.png")
+    c = canvas.Canvas(ADDON_PDF_PATH, pagesize=A4)
+    pw, ph = A4
+    cw = 565.0
+    ch = cw * (975.0 / 2909.0)
+    scale = cw / 2909.0
+    margin_top = 18.0
+    gap = (ph - 2 * margin_top - 4 * ch) / 3.0
+    x0 = (pw - cw) / 2.0
+
+    stubs_config = [
+        (1060, MAROON_PDF, "maroon", 560, 277),
+        (1520, BLACK_PDF, "black", 575, 283),
+        (1980, MAROON_PDF, "maroon", 580, 283),
+        (2440, BLUE_PDF, "blue", 580, 282),
+    ]
+    qr_sz = 100 * scale
+    c.setFont("Helvetica-Bold", 36 * scale)
+
+    addon_pages = (len(new_codes) + 3) // 4
+    for p in range(addon_pages):
+        page_codes = new_codes[p*4 : (p+1)*4]
+        for i, code in enumerate(page_codes):
+            y0 = ph - margin_top - (i + 1) * ch - i * gap
+            c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
+
+            for x_base, col, qr_variant, x_h, y_h in stubs_config:
+                qr_file = qr_map[code][qr_variant]
+                qr_x = x0 + (x_base + 285) * scale
+                qr_y = y0 + ch - 224 * scale
+                c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
+
+                tx = x0 + (x_base + y_h + 31) * scale
+                ty = y0 + ch - (974 - x_h) * scale
+                c.saveState()
+                c.setFillColorRGB(*col)
+                c.translate(tx, ty)
+                c.rotate(90)
+                c.drawString(0, 0, code)
+                c.restoreState()
+
+            if i < 3:
+                cut_y = y0 - (gap / 2.0)
+                c.saveState()
+                c.setDash(4, 4)
+                c.setStrokeColorRGB(0.75, 0.75, 0.75)
+                c.setLineWidth(0.6)
+                c.line(x0 - 8, cut_y, x0 + cw + 8, cut_y)
+                c.restoreState()
+
+        c.showPage()
+    c.save()
+
+    return jsonify({
+        "success": True,
+        "message": f"Generated {count} new coupons (#{start_serial} - #{start_serial+count-1})!",
+        "count": count,
+        "new_coupons": new_records,
+        "pdf_download_url": "/api/download-addon-pdf"
+    })
+
+
+@app.route("/api/download-addon-pdf", methods=["GET"])
+def download_addon_pdf():
+    if os.path.exists(ADDON_PDF_PATH):
+        return send_file(
+            ADDON_PDF_PATH,
+            as_attachment=True,
+            download_name=f"EEE_FEST_2026_Coupons_Addon_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
+    return jsonify({"error": "Addon PDF not found"}), 404
+
+
 @app.route("/api/export-excel", methods=["GET"])
 def export_excel():
     if os.path.exists(EXCEL_PATH):

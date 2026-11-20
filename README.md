@@ -1,92 +1,104 @@
-# EEE FEST 2026 — Raffle Draw & Festival Pass Suite 🎟️⚡
+# EEE FEST 2026 - Master Verification & Management Portal Suite
 
 Official coupon generation, printable batch compilation, and anti-counterfeit QR code verification system designed for **EEE FEST 2026**, organized by the **Department of Electrical & Electronic Engineering (EEE)** at **Daffodil International University (DIU)**.
 
-Developed by **Anik Sarker**.
+System Architect & Developer: **Anik Sarker**
 
 ---
 
-## 🌟 Key Updates & Features (v2.0)
+## Live Deployments & Access
 
-1. **1,260 Unique Cryptographic Coupons**:
-   - Each coupon has a unique 4-character alphanumeric code (e.g. `D78G`, `H92U`, `Z9D2`) guaranteeing both letters and digits, with zero ambiguous characters (`0/O`, `1/I` removed).
-   - **4 Tear-off Stubs per Coupon** — Each stub now has **both a dedicated QR code and an inline coupon number**:
-     - **Stub 1**: `RAFFLE DRAW` (Participant copy) — Festival Maroon QR code + inline code (`Cupon No: D78G`)
-     - **Stub 2**: `LUNCH & DRINKS` (Food booth copy) — High-contrast Black QR code + inline code (`Cupon No: D78G`)
-     - **Stub 3**: `RAFFLE DRAW` (Drop box copy) — Festival Maroon QR code + inline code (`Cupon No: D78G`)
-     - **Stub 4**: `T-SHIRT` (Merchandise booth copy) — Navy Blue QR code + inline code (`Cupon No: D78G`)
-   - **Pixel-Perfect Inline Alignment**: The coupon number is printed directly inline with the colon of `Cupon No:` with zero text overlap.
-
-2. **315-Page High-Precision Printable PDF (`EEE_FEST_2026_Coupons_Printable.pdf`)**:
-   - Exactly **4 coupons per A4 portrait page** (1,260 coupons ÷ 4 = 315 pages).
-   - Vector-crisp text and sharp QR codes on a high-resolution 300 DPI Canva template.
-   - Clean dashed cutting guidelines with scissors indicators (`✂`) for rapid trimming.
-   - Running footer with page numbering and coupon range markers (e.g. `Page 1 of 315 | Coupons #0001 - #0004`).
-
-3. **Multi-Role Admin & Super Admin System**:
-   - **Super Admin Deck (`admin@eeefest.com` / `admin2026`)**:
-     - **Live Scanning Controls**: Toggle switches to activate or pause scanning for any section (**Raffle Draw**, **Lunch & Drinks**, **T-Shirt**).
-     - **Admin Management Portal**: Add new admins by entering their **Full Name**, **Email Address**, **Password**, and checking their **Authorized Scanning Sections**.
-     - View and manage the roster of all registered booth admins.
-   - **Role-Based Scanning Permissions**:
-     - Admins can log in and scan only the sections they are authorized for.
-     - If an admin attempts to scan an unauthorized section or if a section is disabled by the Super Admin, the scan is blocked with an explanatory alert.
-     - Logs record the exact admin name and timestamp for every verified stub.
-
-4. **100% Offline & Dual Deployment Ready**:
-   - **Zero-Server Offline Mode**: Double-click `open_offline_portal.bat` or open `docs/index.html` directly in any web browser (`file:///`). It uses embedded offline data (`coupons_data.js`, `admins_data.js`, `settings_data.js`) with `localStorage` state persistence.
-   - **Local Flask Server**: Double-click `start_server.bat` or run `python app.py` to start the live server at `http://127.0.0.1:5000` with real-time Excel updates.
-   - **Live Cloud (GitHub Pages)**: [https://anik-creates.github.io/eee-fest-2026-raffle-draw/](https://anik-creates.github.io/eee-fest-2026-raffle-draw/)
-
-5. **Master Excel Spreadsheet (`EEE_FEST_2026_Coupons.xlsx`)**:
-   - Real-time row-by-row synchronization: updates status, timestamp, and scanning admin in columns for Raffle, Lunch, and T-Shirt.
-   - Includes an executive Summary Dashboard sheet.
+* **Vercel Cloud Production**: [https://eeefest.vercel.app](https://eeefest.vercel.app)
+* **GitHub Pages Mirror**: [https://anik-creates.github.io/eee-fest-2026-raffle-draw/](https://anik-creates.github.io/eee-fest-2026-raffle-draw/)
+* **Local Offline Launcher (Zero Python required)**: Double-click `open_offline_portal.bat` or open `index.html` in any browser.
+* **Local Python Server (Live Excel Sync)**: Double-click `start_server.bat` (serves on `http://127.0.0.1:5000`).
 
 ---
 
-## 🔑 Default Admin Credentials
+## Key Features & Architecture
+
+### 1. High-Precision Printable Batch PDF (`EEE_FEST_2026_Coupons_Printable.pdf`)
+* **1,260 Cryptographically Unique Coupons**:
+  * 4-character alphanumeric codes with guaranteed mix of letters and digits.
+  * Zero ambiguous characters (`0/O`, `1/I` excluded).
+* **4 Tear-off Stubs per Coupon with Color-Coded QR Codes**:
+  * **Stub 1: Raffle Draw (Participant Copy)** - Festival Maroon QR code
+  * **Stub 2: Lunch & Drinks (Food Distribution)** - High-Contrast Black QR code
+  * **Stub 3: Raffle Draw (Drop Box Copy)** - Festival Maroon QR code
+  * **Stub 4: T-Shirt (Merchandise Distribution)** - Navy Blue QR code
+* **Pixel-Perfect Alignment**:
+  * `Cupon No:` and the coupon code are printed on the **exact same horizontal line**: `Cupon No: D78G`.
+  * The QR code is placed **directly beside the coupon code**, inside the ticket border, with zero text collision.
+* Exactly **4 coupons per A4 portrait page** (315 pages total) with cutting guidelines and scissors markers.
+
+### 2. Multi-Role Admin & Super Admin System
+* **Super Admin Control Deck**:
+  * **Live Scanning Controls**: Toggle switches to activate or pause scanning for any section (**Raffle Draw**, **Lunch & Drinks**, **T-Shirt**).
+  * **Admin Management Portal**: Add new admins by providing **Full Name**, **Email Address**, **Password**, and checking their **Authorized Scanning Sections**.
+  * **Dynamic Coupon Generation**: Super Admin can generate additional batches of coupons (4, 8, 12, 16, 20...) on the fly. The new codes are automatically added to the database and a printable PDF is compiled and downloaded instantly.
+* **Strict Admin Permission Enforcement**:
+  * If the Super Admin assigns an admin only **T-Shirt**, that admin can **ONLY scan for T-Shirt**.
+  * All other sections are locked with `UNAUTHORIZED` indicators.
+  * Any attempt to scan for a non-permitted category is rejected with: `ACCESS DENIED: Your admin account is only authorized to scan for [Section].`
+* **Real-Time Duplicate Prevention**:
+  * Once a coupon stub is redeemed/submitted, any subsequent scan of that same code is blocked:
+    `DUPLICATE ENTRY DETECTED: Coupon #[SL] ([CODE]) was already registered for [SECTION] on [TIMESTAMP] by [ADMIN]. Duplicate entry blocked!`
+* **Reset & Delete Entry Controls**:
+  * Verification status can be reset back to `AVAILABLE` directly from the result card or master table.
+  * Individual coupons can be permanently deleted with confirmation.
+
+### 3. Firebase Cloud & Offline Dual Runtime
+* **Firebase Firestore Cloud Database (`fest2026-35ba3`)**:
+  * Real-time synchronization of coupons, admin accounts, scanning settings, and audit logs across all connected devices.
+* **Offline Dual Runtime**:
+  * Local storage fallback ensures 100% zero-latency operation even during internet outages or offline events.
+  * Real-time Excel sheet synchronization (`EEE_FEST_2026_Coupons.xlsx`) when running with the local Flask server.
+
+---
+
+## Default Admin Credentials
 
 | Role | Name | Email | Password | Allowed Sections |
 | :--- | :--- | :--- | :--- | :--- |
-| **👑 Super Admin** | Anik Sarker | `admin@eeefest.com` | `admin2026` | **All Sections** + Admin Controls |
-| **🎟️ Raffle Admin** | Raffle Booth | `raffle@eeefest.com` | `fest2026raffle` | Raffle Draw |
-| **🍱 Food Admin** | Lunch Booth | `lunch@eeefest.com` | `fest2026lunch` | Lunch & Drinks |
-| **👕 T-Shirt Admin** | Merchandise Booth | `tshirt@eeefest.com` | `fest2026tshirt` | T-Shirt Distribution |
-
-> *The Super Admin can create additional admins anytime through the "Manage Admins" button in the portal.*
+| **Super Admin** | Anik Sarker | `admin@eeefest.com` | `admin2026` | **All Sections** + Admin Controls |
+| **Raffle Admin** | Raffle Booth | `raffle@eeefest.com` | `fest2026raffle` | Raffle Draw |
+| **Food Admin** | Lunch Booth | `lunch@eeefest.com` | `fest2026lunch` | Lunch & Drinks |
+| **T-Shirt Admin** | Merchandise Booth | `tshirt@eeefest.com` | `fest2026tshirt` | T-Shirt Distribution |
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 ├── EEE FEST  Cupon - 2026.png            # Master Canva design template (2909x975)
 ├── EEE_FEST_2026_Coupons_Printable.pdf    # Complete 315-page printable PDF (4 per A4 page)
 ├── EEE_FEST_2026_Coupons.xlsx            # Master Excel spreadsheet (auto-syncing)
+├── eee_fest_logo.png                     # Transparent high-res navbar logo
+├── index.html                            # Root portal entrypoint (Vercel deployment)
+├── style.css                             # Professional stylesheet (zero emojis, mobile friendly)
+├── app.js                                # Frontend engine (Firebase sync + Web Audio + QR scanner)
 ├── coupons_db.json                       # Master JSON database of all 1,260 coupons
 ├── coupons_data.js                       # Standalone offline coupons data
 ├── admins_db.json                        # Master admin accounts database
 ├── admins_data.js                        # Standalone offline admins data
 ├── settings.json                         # Global scanning toggles config
 ├── settings_data.js                      # Standalone offline settings data
+├── vercel.json                           # Vercel deployment configuration
 ├── generate_coupons.py                   # Automated batch generator suite v2.0
 ├── app.py                                # Flask backend application & verification API
 ├── start_server.bat                      # One-click Windows local server launcher
-├── open_offline_portal.bat               # One-click offline browser launcher (no Python required)
+├── open_offline_portal.bat               # One-click offline browser launcher
 ├── qrcodes/                              # 1,260 QR codes (color-themed variants)
 ├── templates/
-│   └── index.html                        # Verification portal frontend
+│   └── index.html                        # Flask template
 ├── static/
-│   ├── css/style.css                     # Neon cyberpunk festival stylesheet
-│   └── js/
-│       ├── app.js                        # Web Audio API, QR scanner, & dual runtime engine
-│       ├── coupons_data.js
-│       ├── admins_data.js
-│       └── settings_data.js
+│   ├── css/style.css                     # Static stylesheet
+│   └── js/app.js                         # Static engine
 └── docs/                                 # GitHub Pages deployment directory
     ├── index.html
     ├── style.css
     ├── app.js
+    ├── eee_fest_logo.png
     ├── coupons_db.json
     ├── coupons_data.js
     ├── admins_data.js
@@ -95,33 +107,17 @@ Developed by **Anik Sarker**.
 
 ---
 
-## 🚀 How to Run the Verification Portal
-
-### Method 1: One-Click Offline (No Python Required)
-1. Double-click `open_offline_portal.bat` or open `docs/index.html` in your web browser.
-2. The entire portal loads instantly with all 1,260 coupons and admin accounts stored locally.
-
-### Method 2: Local Python Server (Real-time Excel Sync)
-1. Double-click `start_server.bat` (or run `python app.py`).
-2. Open `http://127.0.0.1:5000` in your browser.
-3. To connect smartphones and tablets over local Wi-Fi, open `http://<YOUR-PC-IP>:5000`.
-
-### Method 3: Cloud (GitHub Pages)
-Visit [https://anik-creates.github.io/eee-fest-2026-raffle-draw/](https://anik-creates.github.io/eee-fest-2026-raffle-draw/).
-
----
-
-## 🖨️ Printing Instructions
+## Printing Instructions
 
 1. Open `EEE_FEST_2026_Coupons_Printable.pdf` in Adobe Acrobat or any modern PDF viewer.
 2. Select **Paper Size: A4**.
-3. Set **Scale to 100% / Actual Size** (do NOT choose "Fit to Printable Area").
-4. Print in high quality on 150–250 GSM paper or cardstock.
-5. Cut along the dashed horizontal lines marked with `✂` to produce 4 coupons per sheet.
+3. Set **Scale to 100% / Actual Size** (do not select "Fit to Printable Area").
+4. Print in high quality on 150-250 GSM paper or cardstock.
+5. Cut along the dashed horizontal lines marked with cut indicators to produce 4 coupons per sheet.
 
 ---
 
-## 👨‍💻 Author & Credits
+## Credits
 
-- **Organized by**: Department of EEE, Daffodil International University (DIU)
-- **System Design & Development**: Anik Sarker
+* **Organized by**: Department of Electrical & Electronic Engineering (EEE), Daffodil International University (DIU)
+* **System Design & Development**: Anik Sarker

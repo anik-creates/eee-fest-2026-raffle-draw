@@ -353,16 +353,16 @@ def build_printable_pdf(codes, qr_map):
     gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.05 pt between coupons
     x0 = (pw - cw) / 2.0  # ~15.14 pt
 
-    # Stubs info: (x_base, text_color_rgb, qr_variant)
+    # Stubs info: (x_base, text_color_rgb, qr_variant, x_h, y_h)
     stubs_config = [
-        (1060, MAROON_PDF, "maroon"),  # Stub 1: Raffle 1
-        (1520, BLACK_PDF, "black"),    # Stub 2: Lunch
-        (1980, MAROON_PDF, "maroon"),  # Stub 3: Raffle 2
-        (2440, BLUE_PDF, "blue"),      # Stub 4: T-Shirt
+        (1060, MAROON_PDF, "maroon", 560, 277),  # Stub 1: Raffle 1
+        (1520, BLACK_PDF, "black", 575, 283),    # Stub 2: Lunch
+        (1980, MAROON_PDF, "maroon", 580, 283),  # Stub 3: Raffle 2
+        (2440, BLUE_PDF, "blue", 580, 282),      # Stub 4: T-Shirt
     ]
 
-    qr_sz = 95 * scale
-    c.setFont("Helvetica-Bold", 34 * scale)
+    qr_sz = 100 * scale
+    c.setFont("Helvetica-Bold", 36 * scale)
 
     for page_num in range(TOTAL_PAGES):
         start_idx = page_num * COUPONS_PER_PAGE
@@ -375,24 +375,23 @@ def build_printable_pdf(codes, qr_map):
             # 1. Draw base coupon template
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
-            # 2. Draw ALL 4 Stubs: QR Code + Inline Coupon Code
-            for x_base, col, qr_variant in stubs_config:
+            # 2. Draw ALL 4 Stubs: QR Code beside coupon code + Inline Coupon Code
+            for x_base, col, qr_variant, x_h, y_h in stubs_config:
                 qr_file = qr_map[code][qr_variant]
 
-                # QR Code at x = x_base + 110, y = 85 (above stub title)
-                qr_x = x0 + (x_base + 110) * scale
-                qr_y = y0 + ch - (85 + 95) * scale
+                # QR Code beside the coupon code inside stub border
+                qr_x = x0 + (x_base + 285) * scale
+                qr_y = y0 + ch - 224 * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
-                # Coupon Code directly inline with 'Cupon No:' colon
-                # Colon ends at y_pil = 416, x_pil = 297
-                tx = x0 + (x_base + 297) * scale
-                ty = y0 + ch - 418 * scale
+                # Coupon Code directly inline on the exact same line as 'Cupon No:'
+                tx = x0 + (x_base + y_h + 31) * scale
+                ty = y0 + ch - (974 - x_h) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
                 c.translate(tx, ty)
                 c.rotate(90)
-                c.drawString(6, -2, code)
+                c.drawString(0, 0, code)
                 c.restoreState()
 
             # 3. Horizontal cutting guide below coupon (if not last on page)

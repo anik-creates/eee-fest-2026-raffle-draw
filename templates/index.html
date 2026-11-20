@@ -2,31 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EEE FEST 2026 - Master Verification & Admin Portal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EEE FEST 2026 - Master Verification & Management Portal</title>
   
-  <!-- Standalone Offline Fallback Data: Allows double-clicking HTML directly without a web server! -->
-  <script src="/static/js/coupons_data.js"></script>
-  <script src="/static/js/admins_data.js"></script>
-  <script src="/static/js/settings_data.js"></script>
+  <!-- Firebase Cloud SDKs (Compat v10) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics-compat.js"></script>
 
-  <!-- Local fallback if accessed directly from filesystem root -->
-  <script>
-    if (typeof window.INITIAL_COUPONS_DATA === 'undefined') {
-      document.write('<script src="coupons_data.js"><\/script>');
-      document.write('<script src="admins_data.js"><\/script>');
-      document.write('<script src="settings_data.js"><\/script>');
-    }
-  </script>
+  <!-- Client-side PDF Generation SDK for Dynamic Addon Batches -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
-  <link rel="stylesheet" href="/static/css/style.css">
-  <script>
-    // Fallback stylesheet if opened directly via file:///
-    if (!document.styleSheets.length || !document.styleSheets[0].href) {
-      document.write('<link rel="stylesheet" href="style.css">');
-    }
-  </script>
-  
+  <!-- Standalone Offline Fallback Data -->
+  <script src="./coupons_data.js"></script>
+  <script src="./admins_data.js"></script>
+  <script src="./settings_data.js"></script>
+
+  <link rel="stylesheet" href="./style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -39,10 +32,10 @@
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-brand">
-      <div class="logo-badge">EEE</div>
+      <img src="./eee_fest_logo.png" alt="EEE FEST 2026 Logo" class="navbar-logo">
       <div class="brand-text">
         <span class="brand-title">EEE FEST 2026</span>
-        <span class="brand-subtitle">Official Raffle Draw & Verification Portal</span>
+        <span class="brand-subtitle">Official Verification & Management Portal</span>
       </div>
     </div>
 
@@ -53,32 +46,32 @@
       <!-- Auth Navigation Section -->
       <div id="authNavContainer" class="admin-nav-group">
         <button id="openLoginBtn" class="btn btn-sm btn-primary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-          Admin Login
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+          Admin Sign In
         </button>
       </div>
 
-      <a href="/api/export-excel" class="btn btn-sm btn-outline-excel" id="exportBtn">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      <button class="btn btn-sm btn-outline-excel" id="exportBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         Export Excel
-      </a>
+      </button>
     </div>
   </header>
 
-  <!-- Super Admin Live Scanning Controls Banner (Visible only for Super Admin) -->
+  <!-- Super Admin Live Controls Banner (Visible only when Super Admin is logged in) -->
   <div id="superAdminDeck" class="container" style="display: none; margin-top: 1rem;">
     <div class="super-admin-deck">
       <div class="deck-header">
-        <span style="font-size: 1.3rem;">👑</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffb800" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
         <div>
           <div class="deck-title">SUPER ADMIN SCANNING CONTROLS</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);">Toggle which sections are currently active for admin scanning</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Configure active booth scanning modes & generate coupon batches</div>
         </div>
       </div>
 
       <div class="deck-toggles">
         <label class="toggle-item">
-          <span>🎟️ Raffle Draw</span>
+          <span>Raffle Draw</span>
           <div class="toggle-switch">
             <input type="checkbox" id="toggleRaffle" checked>
             <span class="toggle-slider"></span>
@@ -86,7 +79,7 @@
         </label>
 
         <label class="toggle-item">
-          <span>🍱 Lunch & Drinks</span>
+          <span>Lunch & Drinks</span>
           <div class="toggle-switch">
             <input type="checkbox" id="toggleLunch" checked>
             <span class="toggle-slider"></span>
@@ -94,7 +87,7 @@
         </label>
 
         <label class="toggle-item">
-          <span>👕 T-Shirt</span>
+          <span>T-Shirt</span>
           <div class="toggle-switch">
             <input type="checkbox" id="toggleTshirt" checked>
             <span class="toggle-slider"></span>
@@ -102,10 +95,14 @@
         </label>
       </div>
 
-      <div>
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
         <button id="openAdminModalBtn" class="btn btn-sm btn-superadmin">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           Manage Admins
+        </button>
+        <button id="openAddonModalBtn" class="btn btn-sm btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Generate More Coupons
         </button>
       </div>
     </div>
@@ -115,17 +112,17 @@
   <div class="category-bar">
     <div class="container category-container">
       <button class="cat-tab active" data-category="raffle" id="tabRaffle">
-        <span class="tab-icon">🎟️</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
         <span class="tab-text">Raffle Draw Entry</span>
         <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
       <button class="cat-tab" data-category="lunch" id="tabLunch">
-        <span class="tab-icon">🍱</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>
         <span class="tab-text">Lunch & Drinks Booth</span>
         <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
       <button class="cat-tab" data-category="tshirt" id="tabTshirt">
-        <span class="tab-icon">👕</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="20.5 7 16 3 8 3 3.5 7 7 10 7 21 17 21 17 10 20.5 7"></polygon></svg>
         <span class="tab-text">T-Shirt Distribution</span>
         <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
@@ -137,7 +134,7 @@
     <!-- Hero Stats Row -->
     <section class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">TOTAL ISSUED</div>
+        <div class="stat-label">TOTAL ISSUED COUPONS</div>
         <div class="stat-value" id="statTotal">1,260</div>
         <div class="stat-desc">Unique Alphanumeric Passes</div>
       </div>
@@ -163,7 +160,7 @@
         <div class="card-header">
           <h2 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><rect x="7" y="7" width="10" height="10"></rect></svg>
-            Live QR Code Scanner
+            Live QR Scanner
           </h2>
           <div class="scanner-controls">
             <button id="toggleScannerBtn" class="btn btn-sm btn-primary">Start Camera</button>
@@ -171,14 +168,14 @@
           </div>
         </div>
 
-        <!-- Section Lock Alert (shown if section is disabled or permission denied) -->
-        <div id="sectionLockNotice" style="display: none; padding: 0.75rem 1rem; background: var(--danger-bg); border-left: 4px solid var(--danger); margin-bottom: 1rem; border-radius: 4px; font-size: 0.85rem; color: #ff80ab;"></div>
+        <!-- Section Lock Notice -->
+        <div id="sectionLockNotice" style="display: none; padding: 0.65rem 0.85rem; background: var(--danger-bg); border-left: 3px solid var(--danger); margin-bottom: 0.85rem; border-radius: 4px; font-size: 0.82rem; color: #ff80ab;"></div>
 
         <!-- Scanner Viewport -->
         <div class="scanner-viewport-wrapper">
           <div id="qrReader" class="qr-reader-box">
             <div class="scanner-idle-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#6b46c1" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b46c1" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
               <p>Click "Start Camera" to scan QR code from coupon stub</p>
             </div>
           </div>
@@ -195,8 +192,8 @@
 
         <!-- Camera Switch Dropdown -->
         <div class="camera-select-row" id="cameraSelectRow" style="display: none;">
-          <label for="cameraSelect">Select Camera:</label>
-          <select id="cameraSelect" class="form-select"></select>
+          <label for="cameraSelect">Camera:</label>
+          <select id="cameraSelect" class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;"></select>
         </div>
 
         <!-- Manual Code Entry Form -->
@@ -207,9 +204,9 @@
         <form id="manualEntryForm" class="manual-form">
           <div class="input-group">
             <input type="text" id="manualCodeInput" class="form-input code-input" placeholder="e.g. D78G" maxlength="6" autocomplete="off" spellcheck="false">
-            <button type="submit" class="btn btn-primary btn-submit" id="submitBtn">
+            <button type="submit" class="btn btn-primary" id="submitBtn">
               <span>Verify & Submit</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
           </div>
           <p class="input-hint">Type the 4-character coupon code found after "Cupon No:"</p>
@@ -223,13 +220,13 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
             Verification Status
           </h2>
-          <span class="active-category-pill" id="activeCategoryPill">🎟️ Raffle Draw</span>
+          <span class="active-category-pill" id="activeCategoryPill">Raffle Draw Entry</span>
         </div>
 
         <!-- Active Result Box -->
         <div id="resultBox" class="result-box result-standby">
           <div class="result-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
           </div>
           <div class="result-body">
             <h3 class="result-title">Ready to Scan</h3>
@@ -237,10 +234,10 @@
           </div>
         </div>
 
-        <!-- Live Scan Activity Feed -->
+        <!-- Live Activity Audit Stream -->
         <div class="activity-section">
           <h3 class="section-subtitle">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             Live Activity Audit Stream
           </h3>
           <div class="activity-list" id="activityList">
@@ -256,15 +253,15 @@
     <section class="card table-card">
       <div class="card-header table-header">
         <div>
-          <h2 class="card-title">All 1,260 Issued Coupons</h2>
-          <p class="card-subtitle">Search, filter, or inspect coupon verification statuses</p>
+          <h2 class="card-title">All Issued Coupons</h2>
+          <p class="card-subtitle">Real-time status inspection, reset & coupon deletion controls</p>
         </div>
         <div class="table-tools">
           <div class="search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input type="text" id="tableSearchInput" placeholder="Search code (e.g. D78G) or SL..." autocomplete="off">
           </div>
-          <select id="tableStatusFilter" class="form-select filter-select">
+          <select id="tableStatusFilter" class="form-input" style="padding: 0.45rem 0.65rem; font-size: 0.85rem; width: auto;">
             <option value="all">All Statuses</option>
             <option value="submitted">Submitted Only</option>
             <option value="available">Available (Unclaimed)</option>
@@ -282,7 +279,7 @@
               <th>Lunch Status</th>
               <th>T-Shirt Status</th>
               <th>Last Scanned By</th>
-              <th>Action</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="couponsTableBody">
@@ -295,7 +292,7 @@
 
       <!-- Pagination -->
       <div class="pagination-bar">
-        <span class="pagination-info" id="paginationInfo">Showing 1 to 25 of 1,260</span>
+        <span class="pagination-info" id="paginationInfo">Showing 1 to 25 of 1,260 coupons</span>
         <div class="pagination-buttons">
           <button id="prevPageBtn" class="btn btn-sm btn-secondary" disabled>Previous</button>
           <span class="page-current" id="currentPageLabel">Page 1</span>
@@ -307,16 +304,14 @@
   </main>
 
   <!-- ========================================== -->
-  <!-- MODALS: AUTH & ADMIN MANAGEMENT -->
+  <!-- MODALS: AUTH, ADMIN MANAGEMENT & ADDON -->
   <!-- ========================================== -->
 
   <!-- Admin Login Modal -->
   <div id="loginModal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">
-          <span>🔑</span> Admin Portal Sign In
-        </h3>
+        <h3 class="modal-title">Admin Portal Sign In</h3>
         <button class="modal-close-btn" id="closeLoginModalBtn">&times;</button>
       </div>
       <div class="modal-body">
@@ -327,20 +322,20 @@
             <label class="form-label">Email Address</label>
             <input type="email" id="loginEmailInput" class="form-input" placeholder="admin@eeefest.com" required autocomplete="email">
           </div>
-          <div class="form-group" style="margin-top: 0.85rem;">
+          <div class="form-group" style="margin-top: 0.75rem;">
             <label class="form-label">Password</label>
-            <input type="password" id="loginPasswordInput" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            <input type="password" id="loginPasswordInput" class="form-input" placeholder="Password" required autocomplete="current-password">
           </div>
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1.25rem;">Sign In to Dashboard</button>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1.15rem;">Sign In to Dashboard</button>
         </form>
 
-        <div class="quick-logins">
-          <div class="quick-logins-title">Quick Demo Login Accounts:</div>
-          <div class="quick-login-pills">
-            <button class="pill-btn" onclick="fillLoginForm('admin@eeefest.com', 'admin2026')">👑 Super Admin</button>
-            <button class="pill-btn" onclick="fillLoginForm('raffle@eeefest.com', 'fest2026raffle')">🎟️ Raffle Admin</button>
-            <button class="pill-btn" onclick="fillLoginForm('lunch@eeefest.com', 'fest2026lunch')">🍱 Lunch Admin</button>
-            <button class="pill-btn" onclick="fillLoginForm('tshirt@eeefest.com', 'fest2026tshirt')">👕 T-Shirt Admin</button>
+        <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--border-color);">
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.4rem; text-transform: uppercase;">Quick Fill Test Accounts:</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
+            <button class="btn btn-sm btn-secondary" onclick="fillLoginForm('admin@eeefest.com', 'admin2026')">Super Admin</button>
+            <button class="btn btn-sm btn-secondary" onclick="fillLoginForm('raffle@eeefest.com', 'fest2026raffle')">Raffle Admin</button>
+            <button class="btn btn-sm btn-secondary" onclick="fillLoginForm('lunch@eeefest.com', 'fest2026lunch')">Lunch Admin</button>
+            <button class="btn btn-sm btn-secondary" onclick="fillLoginForm('tshirt@eeefest.com', 'fest2026tshirt')">T-Shirt Admin</button>
           </div>
         </div>
       </div>
@@ -351,20 +346,18 @@
   <div id="adminModal" class="modal-overlay" style="display: none;">
     <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3 class="modal-title">
-          <span>👥</span> Super Admin - Admin Management Portal
-        </h3>
+        <h3 class="modal-title">Super Admin - Admin Management</h3>
         <button class="modal-close-btn" id="closeAdminModalBtn">&times;</button>
       </div>
       <div class="modal-body">
         
         <!-- Add New Admin Card -->
-        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem;">
-          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--primary); margin-bottom: 0.85rem;">+ ADD NEW SCANNING ADMIN</h4>
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.15rem;">
+          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--primary); margin-bottom: 0.75rem;">ADD NEW SCANNING ADMIN</h4>
           <div id="addAdminMsg" style="display: none; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem;"></div>
 
           <form id="addAdminForm">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
               <div class="form-group">
                 <label class="form-label">Full Name</label>
                 <input type="text" id="newAdminName" class="form-input" placeholder="e.g. Tanvir Ahmed" required>
@@ -375,36 +368,36 @@
               </div>
               <div class="form-group">
                 <label class="form-label">Password</label>
-                <input type="password" id="newAdminPassword" class="form-input" placeholder="Create a secure password" required>
+                <input type="password" id="newAdminPassword" class="form-input" placeholder="Password" required>
               </div>
             </div>
 
-            <div class="form-group" style="margin-top: 0.85rem;">
+            <div class="form-group" style="margin-top: 0.75rem;">
               <label class="form-label">Authorized Scanning Sections:</label>
               <div class="checkbox-group">
                 <label class="checkbox-label">
                   <input type="checkbox" id="permRaffle" value="raffle" checked>
-                  <span>🎟️ Raffle Draw</span>
+                  <span>Raffle Draw</span>
                 </label>
                 <label class="checkbox-label">
                   <input type="checkbox" id="permLunch" value="lunch" checked>
-                  <span>🍱 Lunch & Drinks</span>
+                  <span>Lunch & Drinks</span>
                 </label>
                 <label class="checkbox-label">
                   <input type="checkbox" id="permTshirt" value="tshirt" checked>
-                  <span>👕 T-Shirt Distribution</span>
+                  <span>T-Shirt Distribution</span>
                 </label>
               </div>
             </div>
 
-            <button type="submit" class="btn btn-sm btn-primary" style="margin-top: 1rem;">Create Admin Account</button>
+            <button type="submit" class="btn btn-sm btn-primary" style="margin-top: 0.85rem;">Create Admin Account</button>
           </form>
         </div>
 
         <!-- Existing Admins Roster -->
         <div>
-          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">AUTHORIZED SYSTEM ADMINS</h4>
-          <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: #fff; margin-bottom: 0.4rem;">AUTHORIZED SYSTEM ADMINS</h4>
+          <div class="table-responsive" style="max-height: 240px; overflow-y: auto;">
             <table class="admin-list-table">
               <thead>
                 <tr>
@@ -428,20 +421,51 @@
     </div>
   </div>
 
+  <!-- Super Admin: Generate Additional Coupons Modal -->
+  <div id="addonModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Generate Additional Coupons Batch</h3>
+        <button class="modal-close-btn" id="closeAddonModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="addonMsg" style="display: none; padding: 0.65rem 0.85rem; border-radius: 4px; font-size: 0.82rem;"></div>
+
+        <p style="font-size: 0.85rem; color: var(--text-muted);">
+          Create new unique cryptographic coupon passes, automatically add them to the Firebase database for scanning, and download the printable A4 PDF batch.
+        </p>
+
+        <form id="addonCouponForm">
+          <div class="form-group">
+            <label class="form-label">Number of Additional Coupons:</label>
+            <select id="addonCountInput" class="form-input">
+              <option value="4">4 Coupons (1 A4 Sheet)</option>
+              <option value="8">8 Coupons (2 A4 Sheets)</option>
+              <option value="12">12 Coupons (3 A4 Sheets)</option>
+              <option value="16">16 Coupons (4 A4 Sheets)</option>
+              <option value="20">20 Coupons (5 A4 Sheets)</option>
+              <option value="40">40 Coupons (10 A4 Sheets)</option>
+              <option value="80">80 Coupons (20 A4 Sheets)</option>
+              <option value="100">100 Coupons (25 A4 Sheets)</option>
+            </select>
+          </div>
+
+          <button type="submit" id="addonSubmitBtn" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+            Generate & Download PDF
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Footer -->
   <footer class="app-footer">
     <div class="container footer-content">
       <p>Department of Electrical and Electronic Engineering | Daffodil International University</p>
-      <p class="footer-credit">EEE FEST 2026 Raffle Draw System • Created by Anik Sarker</p>
+      <p class="footer-credit">EEE FEST 2026 Raffle Draw System | Created by Anik Sarker</p>
     </div>
   </footer>
 
-  <script src="/static/js/app.js"></script>
-  <script>
-    // Fallback script path for direct file:/// opening
-    if (typeof initPortalEngine === 'undefined') {
-      document.write('<script src="app.js"><\/script>');
-    }
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
