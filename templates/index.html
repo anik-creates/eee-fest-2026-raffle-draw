@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EEE FEST 2026 - Raffle Draw & Coupon Verification</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- HTML5 QR Code Scanner Library -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="logo-badge">EEE</div>
+      <div class="brand-text">
+        <span class="brand-title">EEE FEST 2026</span>
+        <span class="brand-subtitle">Official Raffle Draw & Verification Portal</span>
+      </div>
+    </div>
+    <div class="nav-status">
+      <span class="status-indicator live"></span>
+      <span class="status-label">SYSTEM ONLINE (1,260 COUPONS LOADED)</span>
+      <a href="/api/export-excel" class="btn btn-sm btn-outline-excel" id="exportBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Export Excel
+      </a>
+    </div>
+  </header>
+
+  <!-- Category Selector Tabs -->
+  <div class="category-bar">
+    <div class="container category-container">
+      <button class="cat-tab active" data-category="raffle">
+        <span class="tab-icon">🎟️</span>
+        <span class="tab-text">Raffle Draw Entry</span>
+      </button>
+      <button class="cat-tab" data-category="lunch">
+        <span class="tab-icon">🍱</span>
+        <span class="tab-text">Lunch & Drinks Booth</span>
+      </button>
+      <button class="cat-tab" data-category="tshirt">
+        <span class="tab-icon">👕</span>
+        <span class="tab-text">T-Shirt Distribution</span>
+      </button>
+    </div>
+  </div>
+
+  <main class="container main-content">
+
+    <!-- Hero Stats Row -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">TOTAL ISSUED</div>
+        <div class="stat-value" id="statTotal">1,260</div>
+        <div class="stat-desc">Unique Alphanumeric Passes</div>
+      </div>
+      <div class="stat-card stat-success">
+        <div class="stat-label">REGISTERED / CLAIMED</div>
+        <div class="stat-value" id="statSubmitted">0</div>
+        <div class="stat-progress">
+          <div class="stat-progress-bar" id="statProgressBar" style="width: 0%"></div>
+        </div>
+      </div>
+      <div class="stat-card stat-pending">
+        <div class="stat-label">REMAINING UNCLAIMED</div>
+        <div class="stat-value" id="statRemaining">1,260</div>
+        <div class="stat-desc" id="statPercent">0.0% completion</div>
+      </div>
+    </section>
+
+    <!-- Verification Workstation (Scanner + Manual + Results) -->
+    <section class="workstation-grid">
+
+      <!-- Left Column: Camera Scanner & Manual Input -->
+      <div class="card scanner-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><rect x="7" y="7" width="10" height="10"></rect></svg>
+            Live QR Code Scanner
+          </h2>
+          <div class="scanner-controls">
+            <button id="toggleScannerBtn" class="btn btn-sm btn-primary">Start Camera</button>
+            <button id="flipCameraBtn" class="btn btn-sm btn-secondary" style="display: none;">Flip</button>
+          </div>
+        </div>
+
+        <!-- Scanner Viewport -->
+        <div class="scanner-viewport-wrapper">
+          <div id="qrReader" class="qr-reader-box">
+            <div class="scanner-idle-placeholder">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#6b46c1" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              <p>Click "Start Camera" to scan QR code from coupon stub</p>
+            </div>
+          </div>
+          <div id="scannerOverlay" class="scanner-overlay" style="display: none;">
+            <div class="scan-target-box">
+              <div class="scan-corner top-left"></div>
+              <div class="scan-corner top-right"></div>
+              <div class="scan-corner bottom-left"></div>
+              <div class="scan-corner bottom-right"></div>
+              <div class="scan-laser-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Camera Switch Dropdown -->
+        <div class="camera-select-row" id="cameraSelectRow" style="display: none;">
+          <label for="cameraSelect">Select Camera:</label>
+          <select id="cameraSelect" class="form-select"></select>
+        </div>
+
+        <!-- Manual Code Entry Form -->
+        <div class="manual-entry-divider">
+          <span>OR ENTER CODE MANUALLY</span>
+        </div>
+
+        <form id="manualEntryForm" class="manual-form">
+          <div class="input-group">
+            <input type="text" id="manualCodeInput" class="form-input code-input" placeholder="e.g. D78G" maxlength="6" autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary btn-submit">
+              <span>Verify & Submit</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+          <p class="input-hint">Type the 4-character coupon code found after "Cupon No:"</p>
+        </form>
+      </div>
+
+      <!-- Right Column: Verification Result & Audit Feed -->
+      <div class="card result-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            Verification Status
+          </h2>
+          <span class="active-category-pill" id="activeCategoryPill">🎟️ Raffle Draw</span>
+        </div>
+
+        <!-- Active Result Box -->
+        <div id="resultBox" class="result-box result-standby">
+          <div class="result-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          </div>
+          <div class="result-body">
+            <h3 class="result-title">Ready to Scan</h3>
+            <p class="result-message">Point camera at coupon QR code or enter the 4-digit code manually.</p>
+          </div>
+        </div>
+
+        <!-- Live Scan Activity Feed -->
+        <div class="activity-section">
+          <h3 class="section-subtitle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            Live Activity Audit Stream
+          </h3>
+          <div class="activity-list" id="activityList">
+            <div class="activity-empty">No scans recorded yet in this session.</div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- Master Database Table Section -->
+    <section class="card table-card">
+      <div class="card-header table-header">
+        <div>
+          <h2 class="card-title">All 1,260 Issued Coupons</h2>
+          <p class="card-subtitle">Search, filter, or inspect coupon verification statuses</p>
+        </div>
+        <div class="table-tools">
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="tableSearchInput" placeholder="Search code (e.g. D78G) or SL..." autocomplete="off">
+          </div>
+          <select id="tableStatusFilter" class="form-select filter-select">
+            <option value="all">All Statuses</option>
+            <option value="submitted">Submitted Only</option>
+            <option value="available">Available (Unclaimed)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>SL</th>
+              <th>Coupon Code</th>
+              <th>Raffle Draw</th>
+              <th>Raffle Timestamp</th>
+              <th>Lunch Status</th>
+              <th>T-Shirt Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="couponsTableBody">
+            <tr>
+              <td colspan="7" class="text-center py-4">Loading coupons database...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination-bar">
+        <span class="pagination-info" id="paginationInfo">Showing 1 to 25 of 1,260</span>
+        <div class="pagination-buttons">
+          <button id="prevPageBtn" class="btn btn-sm btn-secondary" disabled>Previous</button>
+          <span class="page-current" id="currentPageLabel">Page 1</span>
+          <button id="nextPageBtn" class="btn btn-sm btn-secondary">Next</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="container footer-content">
+      <p>Department of Electrical and Electronic Engineering | Daffodil International University</p>
+      <p class="footer-credit">EEE FEST 2026 Raffle Draw System • Created by Anik Sarker</p>
+    </div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
