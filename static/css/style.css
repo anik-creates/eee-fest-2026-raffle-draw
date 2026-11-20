@@ -337,6 +337,26 @@ body {
 .qr-reader-box {
   width: 100%;
   height: 100%;
+  background: #000;
+  border: none !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+#qrReader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 8px !important;
+}
+
+/* Eliminate Html5Qrcode duplicate scan window / double border glitch */
+#qrReader #qr-shaded-region {
+  display: none !important;
+}
+
+#qrReader canvas {
+  display: none !important;
 }
 
 .scanner-idle-placeholder {
@@ -362,30 +382,176 @@ body {
 
 .scan-target-box {
   position: relative;
-  width: 180px;
-  height: 180px;
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
 }
 
 .scan-corner {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-color: var(--primary);
   border-style: solid;
 }
 
-.scan-corner.top-left { top: 0; left: 0; border-width: 3px 0 0 3px; }
-.scan-corner.top-right { top: 0; right: 0; border-width: 3px 3px 0 0; }
-.scan-corner.bottom-left { bottom: 0; left: 0; border-width: 0 0 3px 3px; }
-.scan-corner.bottom-right { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+.scan-corner.top-left { top: 0; left: 0; border-width: 3px 0 0 3px; border-top-left-radius: 8px; }
+.scan-corner.top-right { top: 0; right: 0; border-width: 3px 3px 0 0; border-top-right-radius: 8px; }
+.scan-corner.bottom-left { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-bottom-left-radius: 8px; }
+.scan-corner.bottom-right { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 8px; }
 
 .scan-laser-line {
   position: absolute;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent-magenta), transparent);
-  box-shadow: 0 0 8px var(--accent-magenta);
+  background: linear-gradient(90deg, transparent, #60a5fa, #a855f7, transparent);
+  box-shadow: 0 0 10px #a855f7;
   animation: laserScan 2s infinite ease-in-out;
+}
+
+/* ========================================================
+   INSTANT COMPACT VALIDITY HUD (ZERO-SCROLL MOBILE & DESKTOP)
+   ======================================================== */
+.instant-validity-hud {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-top: 0.85rem;
+  border-radius: 8px;
+  transition: all 0.25s ease;
+  min-height: 58px;
+}
+
+.instant-validity-hud.hud-idle {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.instant-validity-hud.hud-valid {
+  background: rgba(16, 185, 129, 0.15);
+  border: 2px solid #10b981;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+.instant-validity-hud.hud-valid .hud-indicator-icon {
+  color: #10b981;
+}
+
+.instant-validity-hud.hud-valid .hud-headline {
+  color: #10b981;
+}
+
+.instant-validity-hud.hud-valid .hud-badge {
+  background: #10b981;
+  color: #fff;
+}
+
+.instant-validity-hud.hud-duplicate {
+  background: rgba(239, 68, 68, 0.18);
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+}
+
+.instant-validity-hud.hud-duplicate .hud-indicator-icon {
+  color: #ef4444;
+}
+
+.instant-validity-hud.hud-duplicate .hud-headline {
+  color: #ef4444;
+}
+
+.instant-validity-hud.hud-duplicate .hud-badge {
+  background: #ef4444;
+  color: #fff;
+}
+
+.instant-validity-hud.hud-counterfeit {
+  background: rgba(244, 63, 94, 0.2);
+  border: 2px solid #f43f5e;
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.2);
+}
+
+.instant-validity-hud.hud-counterfeit .hud-indicator-icon {
+  color: #f43f5e;
+}
+
+.instant-validity-hud.hud-counterfeit .hud-headline {
+  color: #f43f5e;
+}
+
+.instant-validity-hud.hud-counterfeit .hud-badge {
+  background: #f43f5e;
+  color: #fff;
+}
+
+.instant-validity-hud.hud-locked {
+  background: rgba(245, 158, 11, 0.15);
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
+.instant-validity-hud.hud-locked .hud-indicator-icon {
+  color: #f59e0b;
+}
+
+.instant-validity-hud.hud-locked .hud-headline {
+  color: #f59e0b;
+}
+
+.instant-validity-hud.hud-locked .hud-badge {
+  background: #f59e0b;
+  color: #000;
+}
+
+.hud-indicator-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hud-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.hud-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.hud-headline {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.hud-subtext {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-badge {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 @keyframes laserScan {
@@ -1049,4 +1215,54 @@ input:checked + .toggle-slider:before {
   .deck-toggles {
     gap: 0.75rem;
   }
+}
+
+/* Persistent Network Offline Warning Banner */
+.network-offline-banner {
+  background: linear-gradient(90deg, #7f1d1d, #991b1b, #7f1d1d);
+  color: #fff;
+  border-bottom: 2px solid #ef4444;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  animation: pulseOffline 2.5s infinite ease-in-out;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.network-offline-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.offline-badge {
+  background: #dc2626;
+  border: 1px solid #fca5a5;
+  color: #fff;
+  padding: 0.25rem 0.65rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.offline-msg {
+  flex: 1;
+  line-height: 1.4;
+}
+
+@keyframes pulseOffline {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
 }

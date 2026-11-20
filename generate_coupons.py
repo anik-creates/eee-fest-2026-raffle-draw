@@ -361,7 +361,7 @@ def build_printable_pdf(codes, qr_map):
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
 
-    qr_pixels = 180
+    qr_pixels = 205
     qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
@@ -381,7 +381,7 @@ def build_printable_pdf(codes, qr_map):
 
                 # Centered in the right blank area / stub width with zero text or border overlap
                 qr_x_img = x_base + 265 - qr_pixels // 2
-                qr_y_img = 210 - qr_pixels // 2
+                qr_y_img = 205 - qr_pixels // 2
                 qr_x = x0 + qr_x_img * scale
                 qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)

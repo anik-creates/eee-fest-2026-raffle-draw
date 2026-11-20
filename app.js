@@ -249,43 +249,20 @@ function initRealtimeSync() {
       }
     });
 
-    // 1. Live Coupon Update Listener (Child Changed: Scans by other admins)
-    rtdb.ref('coupons').on('child_changed', snap => {
-      const remoteCoupon = snap.val();
-      if (!remoteCoupon || !remoteCoupon.code) return;
-
-      const idx = localCoupons.findIndex(c => c.code === remoteCoupon.code);
-      if (idx !== -1) {
-        localCoupons[idx] = Object.assign(localCoupons[idx], remoteCoupon);
-      } else {
-        localCoupons.push(remoteCoupon);
-      }
-      localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
-      refreshStatsAndTable();
-    });
-
-    // 2. Live New Coupon Listener (Child Added: Addon batch generation by super admin)
-    rtdb.ref('coupons').on('child_added', snap => {
-      const remoteCoupon = snap.val();
-      if (!remoteCoupon || !remoteCoupon.code) return;
-
-      const idx = localCoupons.findIndex(c => c.code === remoteCoupon.code);
-      if (idx === -1) {
-        localCoupons.push(remoteCoupon);
-        localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
-        refreshStatsAndTable();
+    // 1. Authoritative Full Coupons Realtime Synchronization
+    // Every scan, reset, or addition on ANY device updates all devices instantly
+    rtdb.ref('coupons').on('value', snap => {
+      const remoteData = snap.val();
+      if (remoteData) {
+        const remoteList = Array.isArray(remoteData) ? remoteData : Object.values(remoteData);
+        if (remoteList.length > 0) {
+          localCoupons = remoteList;
+          refreshStatsAndTable();
+        }
       }
     });
 
-    // 3. Live Coupon Removal Listener (Child Removed: Super Admin Reset/Delete)
-    rtdb.ref('coupons').on('child_removed', snap => {
-      const code = snap.key;
-      localCoupons = localCoupons.filter(c => c.code !== code);
-      localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
-      refreshStatsAndTable();
-    });
-
-    // 4. Live Global Scanning Settings Listener
+    // 2. Live Global Scanning Settings Listener
     rtdb.ref('settings').on('value', snap => {
       const s = snap.val();
       if (s) {
@@ -336,13 +313,12 @@ async function initStorage() {
     isLiveApi = false;
   }
 
-  // Seed coupons from localStorage or initial dataset
-  const storedCoupons = localStorage.getItem('eeefest_coupons');
-  if (storedCoupons) {
-    localCoupons = JSON.parse(storedCoupons);
-  } else if (window.INITIAL_COUPONS_DATA) {
+  // CRITICAL: Explicitly purge stale coupons from localStorage so test data never lingers!
+  try { localStorage.removeItem('eeefest_coupons'); } catch (e) {}
+
+  // Seed pristine initial in-memory dataset
+  if (window.INITIAL_COUPONS_DATA) {
     localCoupons = JSON.parse(JSON.stringify(window.INITIAL_COUPONS_DATA));
-    localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
   }
 
   // Seed admins
@@ -383,7 +359,6 @@ async function syncCouponToCloud(coupon) {
   } else {
     localCoupons.push(coupon);
   }
-  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
 
   // 2. Realtime Database (Sub-second broadcast to all active admins)
   if (rtdb && navigator.onLine) {
@@ -742,7 +717,8 @@ function initSuperAdminControls() {
           c.tshirt_scanned_by = '';
         });
 
-        localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+        // Ensure localStorage never keeps stale coupon data
+        try { localStorage.removeItem('eeefest_coupons'); } catch (e) {}
 
         // Realtime database bulk update
         if (rtdb) {
@@ -1050,7 +1026,7 @@ function startScanner() {
 
   html5QrCode.start(
     cameraId,
-    { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
+    { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
     onQrCodeSuccess,
     () => {}
   ).then(() => {
@@ -1121,6 +1097,22 @@ async function verifyCode(rawCode) {
 
   const adminName = currentAdmin ? currentAdmin.name : 'Admin Desk';
   const timestamp = new Date().toLocaleString();
+
+  // Live Cloud Realtime Verification Check: fetch latest state directly from RTDB before claiming
+  if (rtdb) {
+    try {
+      const snap = await rtdb.ref('coupons/' + cleanCode).once('value');
+      const cloudVal = snap.val();
+      if (cloudVal) {
+        const idx = localCoupons.findIndex(c => c.code === cleanCode);
+        if (idx !== -1) {
+          localCoupons[idx] = Object.assign(localCoupons[idx], cloudVal);
+        } else {
+          localCoupons.push(cloudVal);
+        }
+      }
+    } catch (e) {}
+  }
 
   // Find Coupon in database
   const coupon = localCoupons.find(c => c.code.toUpperCase() === cleanCode);
@@ -1242,6 +1234,9 @@ function renderResultBox(status, message, coupon = null) {
       ${actionButtons}
     </div>
   `;
+
+  // Synchronize the instant compact HUD on the scanner card
+  updateInstantHud(status, message, coupon);
 }
 
 function resetResultBox() {
@@ -1256,6 +1251,55 @@ function resetResultBox() {
       <p class="result-message">Point camera at coupon QR code or enter the 4-digit code manually.</p>
     </div>
   `;
+
+  // Reset instant compact HUD
+  updateInstantHud('IDLE', 'Point camera at coupon QR code or enter code below');
+}
+
+// ========================================================
+// INSTANT COMPACT VALIDITY HUD (ZERO-SCROLL BOOTH STATUS)
+// ========================================================
+function updateInstantHud(status, message, coupon = null) {
+  const hud = document.getElementById('instantValidityHud');
+  const icon = document.getElementById('hudIcon');
+  const title = document.getElementById('hudTitle');
+  const subtext = document.getElementById('hudMessage');
+  const badge = document.getElementById('hudBadge');
+  if (!hud) return;
+
+  hud.className = 'instant-validity-hud';
+
+  if (status === 'SUCCESS') {
+    hud.classList.add('hud-valid');
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    title.innerText = coupon ? `VALID & CLAIMED: ${coupon.code} (#${String(coupon.serial).padStart(4, '0')})` : 'VALID & CLAIMED';
+    subtext.innerText = message;
+    badge.innerText = 'VALID';
+  } else if (status === 'ALREADY_SUBMITTED') {
+    hud.classList.add('hud-duplicate');
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+    title.innerText = coupon ? `DUPLICATE ENTRY: ${coupon.code}` : 'DUPLICATE ENTRY';
+    subtext.innerText = message;
+    badge.innerText = 'DUPLICATE';
+  } else if (status === 'COUNTERFEIT') {
+    hud.classList.add('hud-counterfeit');
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+    title.innerText = 'COUNTERFEIT CODE';
+    subtext.innerText = message;
+    badge.innerText = 'INVALID';
+  } else if (status === 'DISABLED' || status === 'DENIED') {
+    hud.classList.add('hud-locked');
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>';
+    title.innerText = status === 'DISABLED' ? 'SECTION DISABLED' : 'ACCESS DENIED';
+    subtext.innerText = message;
+    badge.innerText = 'LOCKED';
+  } else {
+    hud.classList.add('hud-idle');
+    icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>';
+    title.innerText = 'READY TO SCAN';
+    subtext.innerText = 'Point camera at coupon QR code or enter code below';
+    badge.innerText = 'STANDBY';
+  }
 }
 
 // ========================================================
@@ -1301,7 +1345,6 @@ window.deleteCouponCode = async function(code) {
   if (!confirm(`Are you sure you want to permanently DELETE Coupon ${code} from the database?`)) return;
 
   localCoupons = localCoupons.filter(c => c.code !== code);
-  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
 
   if (rtdb) {
     try { await rtdb.ref('coupons/' + code).remove(); } catch (e) {}
@@ -1361,7 +1404,6 @@ function initAddonCouponModal() {
           const data = await res.json();
           if (data.success) {
             localCoupons.push(...data.new_coupons);
-            localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
 
             if (rtdb) {
               for (const nc of data.new_coupons) {
@@ -1452,8 +1494,6 @@ async function generateAddonBatchClientSide(count) {
       try { firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
     }
   }
-
-  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
 
   // Client-side PDF generation if jsPDF is available
   if (typeof window.jspdf !== 'undefined') {

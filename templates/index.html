@@ -209,6 +209,20 @@
           </div>
         </div>
 
+        <!-- Instant Compact Validity HUD for Booth Admins (Zero-Scroll Live Status) -->
+        <div id="instantValidityHud" class="instant-validity-hud hud-idle">
+          <div class="hud-indicator-icon" id="hudIcon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          </div>
+          <div class="hud-content">
+            <div class="hud-title-row">
+              <span class="hud-headline" id="hudTitle">READY TO SCAN</span>
+              <span class="hud-badge" id="hudBadge">STANDBY</span>
+            </div>
+            <div class="hud-subtext" id="hudMessage">Point camera at QR code or enter code below</div>
+          </div>
+        </div>
+
         <!-- Camera Switch Dropdown -->
         <div class="camera-select-row" id="cameraSelectRow" style="display: none;">
           <label for="cameraSelect">Camera:</label>

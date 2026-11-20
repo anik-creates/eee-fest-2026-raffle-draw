@@ -759,7 +759,7 @@ def generate_addon_coupons():
         (2285, MAROON_PDF, "maroon", 379, 597),   # Stub 3: Raffle 2
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
-    qr_pixels = 180
+    qr_pixels = 205
     qr_sz = qr_pixels * scale
 
     addon_pages = (len(new_codes) + 3) // 4
@@ -772,7 +772,7 @@ def generate_addon_coupons():
             for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
                 qr_x_img = x_base + 265 - qr_pixels // 2
-                qr_y_img = 210 - qr_pixels // 2
+                qr_y_img = 205 - qr_pixels // 2
                 qr_x = x0 + qr_x_img * scale
                 qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
