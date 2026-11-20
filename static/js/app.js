@@ -148,6 +148,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTableControls();
   initExportButton();
   initAddonCouponModal();
+  initManualCouponModal();
+  initDeleteAllModal();
   updateUIForCurrentCategory();
   refreshStatsAndTable();
 });
@@ -512,8 +514,14 @@ function autoSelectAllowedTab() {
 function renderAuthNavbar() {
   const authNav = document.getElementById('authNavContainer');
   const superDeck = document.getElementById('superAdminDeck');
+  const authNotice = document.getElementById('authRequiredNotice');
+  const tableSection = document.getElementById('masterTableSection');
 
   if (!currentAdmin) {
+    if (authNotice) authNotice.style.display = 'block';
+    if (tableSection) tableSection.style.display = 'none';
+    if (superDeck) superDeck.style.display = 'none';
+
     authNav.innerHTML = `
       <button id="openLoginBtn" class="btn btn-sm btn-primary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
@@ -523,9 +531,14 @@ function renderAuthNavbar() {
     document.getElementById('openLoginBtn').addEventListener('click', () => {
       document.getElementById('loginModal').style.display = 'flex';
     });
-    if (superDeck) superDeck.style.display = 'none';
   } else {
+    if (authNotice) authNotice.style.display = 'none';
     const isSuper = currentAdmin.role === 'superadmin';
+
+    // Regular Booth Admins get an ultra-clean, simple interface without the overwhelmed 1260-row table
+    if (tableSection) tableSection.style.display = isSuper ? 'block' : 'none';
+    if (superDeck) superDeck.style.display = isSuper ? 'block' : 'none';
+
     const sectionsText = isSuper ? 'ALL SECTIONS' : currentAdmin.allowed_sections.map(s => s.toUpperCase()).join(', ');
 
     authNav.innerHTML = `
@@ -544,13 +557,10 @@ function renderAuthNavbar() {
       refreshStatsAndTable();
     });
 
-    if (superDeck) {
-      superDeck.style.display = isSuper ? 'block' : 'none';
-      if (isSuper) {
-        document.getElementById('toggleRaffle').checked = !!settingsState.enable_raffle;
-        document.getElementById('toggleLunch').checked = !!settingsState.enable_lunch;
-        document.getElementById('toggleTshirt').checked = !!settingsState.enable_tshirt;
-      }
+    if (superDeck && isSuper) {
+      document.getElementById('toggleRaffle').checked = !!settingsState.enable_raffle;
+      document.getElementById('toggleLunch').checked = !!settingsState.enable_lunch;
+      document.getElementById('toggleTshirt').checked = !!settingsState.enable_tshirt;
     }
   }
 }
@@ -1017,6 +1027,13 @@ function initScanner() {
 }
 
 function startScanner() {
+  if (!currentAdmin) {
+    alert('Authentication Required: Please sign in as an Admin or Super Admin to use the camera scanner.');
+    const loginModal = document.getElementById('loginModal');
+    if (loginModal) loginModal.style.display = 'flex';
+    return;
+  }
+
   const toggleBtn = document.getElementById('toggleScannerBtn');
   const overlay = document.getElementById('scannerOverlay');
 
@@ -1065,6 +1082,17 @@ function onQrCodeSuccess(decodedText) {
 // CORE VERIFICATION ENGINE & DUPLICATE BLOCKING
 // ========================================================
 async function verifyCode(rawCode) {
+  // Check 0: Strict Authentication Guard - Only Admin or Super Admin can scan or submit to the database
+  if (!currentAdmin) {
+    sfx.playError();
+    const msg = 'AUTHENTICATION REQUIRED: Please sign in as an Admin or Super Admin to scan or submit coupons.';
+    renderResultBox('DENIED', msg);
+    updateInstantHud('DENIED', msg);
+    const loginModal = document.getElementById('loginModal');
+    if (loginModal) loginModal.style.display = 'flex';
+    return;
+  }
+
   let cleanCode = rawCode.trim().toUpperCase();
   if (cleanCode.includes('CODE=')) {
     cleanCode = cleanCode.split('CODE=')[1].split('&')[0].trim();
@@ -1372,7 +1400,8 @@ function initAddonCouponModal() {
 
   if (openBtn) {
     openBtn.addEventListener('click', () => {
-      document.getElementById('addonMsg').style.display = 'none';
+      const msgBox = document.getElementById('addonMsg');
+      if (msgBox) msgBox.style.display = 'none';
       modal.style.display = 'flex';
     });
   }
@@ -1386,12 +1415,13 @@ function initAddonCouponModal() {
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const count = parseInt(document.getElementById('addonCountInput').value, 10) || 4;
+      const count = parseInt(document.getElementById('addonCountInput').value, 10) || 1260;
+      const startFrom1 = document.getElementById('addonStartNewBatch')?.checked || (localCoupons.length === 0);
       const msgBox = document.getElementById('addonMsg');
       const submitBtn = document.getElementById('addonSubmitBtn');
 
       submitBtn.disabled = true;
-      submitBtn.innerText = 'Generating Batch & PDF...';
+      submitBtn.innerText = `Generating ${count} Coupons & PDF...`;
       msgBox.style.display = 'none';
 
       try {
@@ -1399,22 +1429,32 @@ function initAddonCouponModal() {
           const res = await fetch('/api/generate-addon', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ count })
+            body: JSON.stringify({ count: count, start_from_1: startFrom1 })
           });
           const data = await res.json();
           if (data.success) {
-            localCoupons.push(...data.new_coupons);
+            if (startFrom1) {
+              localCoupons = data.new_coupons;
+            } else {
+              localCoupons.push(...data.new_coupons);
+            }
 
             if (rtdb) {
+              const updates = {};
               for (const nc of data.new_coupons) {
-                try { rtdb.ref('coupons/' + nc.code).set(nc); } catch (e) {}
+                updates['coupons/' + nc.code] = nc;
+              }
+              const entries = Object.entries(updates);
+              for (let i = 0; i < entries.length; i += 250) {
+                const chunk = Object.fromEntries(entries.slice(i, i + 250));
+                await rtdb.ref().update(chunk);
               }
             }
             
             // Trigger PDF Download
             window.location.href = data.pdf_download_url;
 
-            msgBox.innerText = `Success! ${count} new coupons generated and added to database. PDF download started.`;
+            msgBox.innerText = `Success: ${count} new coupons generated and added to database. PDF download started.`;
             msgBox.style.background = 'var(--success-bg)';
             msgBox.style.color = 'var(--success)';
             msgBox.style.display = 'block';
@@ -1425,8 +1465,8 @@ function initAddonCouponModal() {
         }
 
         // Client-side batch generator
-        await generateAddonBatchClientSide(count);
-        msgBox.innerText = `Success! ${count} new coupons generated and added to database.`;
+        await generateAddonBatchClientSide(count, startFrom1);
+        msgBox.innerText = `Success: ${count} new coupons generated, added to live database, and exported.`;
         msgBox.style.background = 'var(--success-bg)';
         msgBox.style.color = 'var(--success)';
         msgBox.style.display = 'block';
@@ -1439,18 +1479,18 @@ function initAddonCouponModal() {
         msgBox.style.display = 'block';
       } finally {
         submitBtn.disabled = false;
-        submitBtn.innerText = 'Generate & Download PDF';
+        submitBtn.innerText = 'Generate Batch & Add to Database';
       }
     });
   }
 }
 
-async function generateAddonBatchClientSide(count) {
+async function generateAddonBatchClientSide(count, startFrom1 = false) {
   const CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
   const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const DIGITS = "23456789";
 
-  const existingCodes = new Set(localCoupons.map(c => c.code.toUpperCase()));
+  const existingCodes = startFrom1 ? new Set() : new Set(localCoupons.map(c => c.code.toUpperCase()));
   const newCodes = [];
 
   while (newCodes.length < count) {
@@ -1465,7 +1505,7 @@ async function generateAddonBatchClientSide(count) {
     }
   }
 
-  const startSerial = localCoupons.length + 1;
+  const startSerial = startFrom1 ? 1 : (localCoupons.length + 1);
   const newRecords = [];
 
   for (let i = 0; i < newCodes.length; i++) {
@@ -1485,15 +1525,30 @@ async function generateAddonBatchClientSide(count) {
       tshirt_scanned_by: '',
       qr_file: `QR_${String(startSerial + i).padStart(4, '0')}_${code}_maroon.png`
     };
-    localCoupons.push(rec);
     newRecords.push(rec);
-    if (rtdb) {
-      try { await rtdb.ref('coupons/' + code).set(rec); } catch (e) {}
+  }
+
+  if (startFrom1) {
+    localCoupons = [...newRecords];
+  } else {
+    localCoupons.push(...newRecords);
+  }
+
+  // Push to RTDB in chunks of 250 for instant high-speed sync
+  if (rtdb) {
+    const updates = {};
+    for (const rec of newRecords) {
+      updates['coupons/' + rec.code] = rec;
     }
-    if (firestoreDb) {
-      try { firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
+    const entries = Object.entries(updates);
+    for (let c = 0; c < entries.length; c += 250) {
+      const chunk = Object.fromEntries(entries.slice(c, c + 250));
+      await rtdb.ref().update(chunk);
     }
   }
+
+  // Auto-download updated Master Excel sheet
+  downloadLiveExcel();
 
   // Client-side PDF generation if jsPDF is available
   if (typeof window.jspdf !== 'undefined') {
@@ -1520,6 +1575,245 @@ async function generateAddonBatchClientSide(count) {
       }
     }
     doc.save(`EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`);
+  }
+}
+
+// ========================================================
+// SUPER ADMIN: MANUAL SINGLE COUPON ADDITION
+// ========================================================
+function initManualCouponModal() {
+  const openBtn = document.getElementById('openManualCouponModalBtn');
+  const modal = document.getElementById('manualCouponModal');
+  const closeBtn = document.getElementById('closeManualCouponModalBtn');
+  const form = document.getElementById('manualCouponAddForm');
+  const codeInput = document.getElementById('newManualCode');
+  const serialInput = document.getElementById('newManualSerial');
+  const btnGen = document.getElementById('btnGenRandomCode');
+  const msgBox = document.getElementById('manualCouponMsg');
+  const submitBtn = document.getElementById('submitManualCouponBtn');
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      if (msgBox) msgBox.style.display = 'none';
+      if (codeInput) codeInput.value = '';
+      if (serialInput) serialInput.value = '';
+      if (modal) modal.style.display = 'flex';
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      if (modal) modal.style.display = 'none';
+    });
+  }
+
+  if (btnGen && codeInput) {
+    btnGen.addEventListener('click', () => {
+      const CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+      const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+      const DIGITS = "23456789";
+      const existing = new Set(localCoupons.map(c => c.code.toUpperCase()));
+      let newCode = '';
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const l = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        const d = DIGITS[Math.floor(Math.random() * DIGITS.length)];
+        const c1 = CHARS[Math.floor(Math.random() * CHARS.length)];
+        const c2 = CHARS[Math.floor(Math.random() * CHARS.length)];
+        const code = [l, d, c1, c2].sort(() => Math.random() - 0.5).join('');
+        if (!existing.has(code)) {
+          newCode = code;
+          break;
+        }
+      }
+      codeInput.value = newCode || ('C' + Math.floor(100 + Math.random() * 899));
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = codeInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length < 3) {
+        msgBox.innerText = 'Coupon code must be at least 3 characters.';
+        msgBox.style.background = 'var(--danger-bg)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+        return;
+      }
+
+      if (localCoupons.some(c => c.code.toUpperCase() === code)) {
+        sfx.playWarning();
+        msgBox.innerText = `Coupon code ${code} already exists in database.`;
+        msgBox.style.background = 'var(--danger-bg)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Adding Coupon...';
+      msgBox.style.display = 'none';
+
+      let serial = parseInt(serialInput.value, 10);
+      if (isNaN(serial) || serial < 1) {
+        serial = localCoupons.length + 1;
+      }
+
+      const rec = {
+        serial: serial,
+        code: code,
+        qr_data: code,
+        raffle_status: 'AVAILABLE',
+        raffle_submitted_at: '',
+        raffle_scanned_by: '',
+        lunch_status: 'AVAILABLE',
+        lunch_redeemed_at: '',
+        lunch_scanned_by: '',
+        tshirt_status: 'AVAILABLE',
+        tshirt_redeemed_at: '',
+        tshirt_scanned_by: '',
+        qr_file: `QR_${String(serial).padStart(4, '0')}_${code}_maroon.png`
+      };
+
+      try {
+        if (isLiveApi) {
+          const res = await fetch('/api/manual-coupon', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code, serial: serial })
+          });
+          const data = await res.json();
+          if (!data.success) {
+            throw new Error(data.message || 'API error adding coupon');
+          }
+        }
+
+        if (rtdb) {
+          await rtdb.ref('coupons/' + code).set(rec);
+        }
+        if (firestoreDb) {
+          try { await firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
+        }
+
+        localCoupons.push(rec);
+        refreshStatsAndTable();
+        sfx.playSuccess();
+
+        msgBox.innerText = `Coupon ${code} (Serial #${serial}) added successfully.`;
+        msgBox.style.background = 'var(--success-bg)';
+        msgBox.style.color = 'var(--success)';
+        msgBox.style.display = 'block';
+
+        codeInput.value = '';
+        serialInput.value = '';
+        showNotification(`Coupon ${code} added to master database.`);
+      } catch (err) {
+        sfx.playError();
+        msgBox.innerText = 'Error adding coupon: ' + err.message;
+        msgBox.style.background = 'var(--danger-bg)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Add Coupon to Database';
+      }
+    });
+  }
+}
+
+// ========================================================
+// SUPER ADMIN: PERMANENT DATABASE WIPE (PASSWORD PROTECTED)
+// ========================================================
+function initDeleteAllModal() {
+  const openBtn = document.getElementById('openDeleteAllModalBtn');
+  const modal = document.getElementById('deleteAllModal');
+  const closeBtn = document.getElementById('closeDeleteAllModalBtn');
+  const cancelBtn = document.getElementById('cancelDeleteAllBtn');
+  const form = document.getElementById('deleteAllConfirmForm');
+  const pwdInput = document.getElementById('deleteAdminPasswordInput');
+  const msgBox = document.getElementById('deleteAllMsg');
+  const confirmBtn = document.getElementById('confirmDeleteAllBtn');
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      if (msgBox) msgBox.style.display = 'none';
+      if (pwdInput) pwdInput.value = '';
+      if (modal) modal.style.display = 'flex';
+    });
+  }
+
+  function hideModal() {
+    if (modal) modal.style.display = 'none';
+    if (pwdInput) pwdInput.value = '';
+    if (msgBox) msgBox.style.display = 'none';
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', hideModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', hideModal);
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const enteredPwd = pwdInput.value.trim();
+
+      // Verify Super Admin Password
+      if (enteredPwd !== 'eeefestadmin') {
+        sfx.playError();
+        msgBox.innerText = 'Incorrect Super Admin password. Deletion unauthorized.';
+        msgBox.style.background = 'rgba(239, 68, 68, 0.2)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+        return;
+      }
+
+      confirmBtn.disabled = true;
+      confirmBtn.innerText = 'Wiping Database...';
+      msgBox.style.display = 'none';
+
+      try {
+        if (isLiveApi) {
+          const res = await fetch('/api/delete-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: enteredPwd })
+          });
+          const data = await res.json();
+          if (!data.success) {
+            throw new Error(data.message || 'Server error clearing database');
+          }
+        }
+
+        // Wipe all coupons from Firebase Realtime Database
+        if (rtdb) {
+          await rtdb.ref('coupons').set(null);
+        }
+
+        localCoupons = [];
+        resetResultBox();
+        refreshStatsAndTable();
+        sfx.playWarning();
+
+        msgBox.innerText = 'All coupons permanently deleted from database.';
+        msgBox.style.background = 'rgba(239, 68, 68, 0.2)';
+        msgBox.style.color = '#ef4444';
+        msgBox.style.display = 'block';
+
+        showNotification('Database cleared: All coupons have been wiped.');
+        setTimeout(() => {
+          hideModal();
+          confirmBtn.disabled = false;
+          confirmBtn.innerText = 'Permanently Delete All';
+        }, 1500);
+      } catch (err) {
+        sfx.playError();
+        msgBox.innerText = 'Error deleting coupons: ' + err.message;
+        msgBox.style.background = 'rgba(239, 68, 68, 0.2)';
+        msgBox.style.color = '#ff80ab';
+        msgBox.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.innerText = 'Permanently Delete All';
+      }
+    });
   }
 }
 

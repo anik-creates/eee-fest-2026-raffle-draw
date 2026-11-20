@@ -1215,6 +1215,47 @@ input:checked + .toggle-slider:before {
   .deck-toggles {
     gap: 0.75rem;
   }
+  .deck-action-buttons {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .deck-action-buttons .btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: 0.85rem;
+  }
+  .scanner-controls {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .scanner-controls .btn {
+    flex: 1;
+    min-height: 44px;
+  }
+  .manual-form .input-group {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .manual-form .input-group .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+.deck-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.deck-action-buttons .btn {
+  flex: 1 1 auto;
+  min-width: 135px;
+  justify-content: center;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
 }
 
 /* Persistent Network Offline Warning Banner */

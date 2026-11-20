@@ -581,6 +581,117 @@ def reset_all_coupons():
     return jsonify({"success": True, "message": "All coupons successfully reset to AVAILABLE."})
 
 
+@app.route("/api/manual-coupon", methods=["POST"])
+def add_manual_coupon():
+    global coupons_list, coupons_by_code
+    data = request.get_json() or {}
+    code = data.get("code", "").strip().upper()
+    serial = data.get("serial")
+
+    if not code:
+        return jsonify({"success": False, "message": "Coupon code is required."}), 400
+    if code in coupons_by_code:
+        return jsonify({"success": False, "message": f"Coupon code {code} already exists in database."}), 409
+
+    if not serial:
+        serial = len(coupons_list) + 1
+    else:
+        serial = int(serial)
+
+    QR_DIR = os.path.join(BASE_DIR, "qrcodes")
+    os.makedirs(QR_DIR, exist_ok=True)
+    base_name = f"QR_{serial:04d}_{code}"
+    m_file = os.path.join(QR_DIR, f"{base_name}_maroon.png")
+    k_file = os.path.join(QR_DIR, f"{base_name}_black.png")
+    b_file = os.path.join(QR_DIR, f"{base_name}_blue.png")
+
+    try:
+        import qrcode
+        qr = qrcode.QRCode(box_size=3, border=1)
+        qr.add_data(code)
+        qr.make(fit=True)
+        qr.make_image(fill_color=(73, 37, 45), back_color="white").convert("RGB").save(m_file)
+        qr.make_image(fill_color=(0, 0, 0), back_color="white").convert("RGB").save(k_file)
+        qr.make_image(fill_color=(44, 84, 129), back_color="white").convert("RGB").save(b_file)
+    except Exception as e:
+        print(f"Manual QR generation: {e}")
+
+    rec = {
+        "serial": serial,
+        "code": code,
+        "qr_data": code,
+        "raffle_status": "AVAILABLE",
+        "raffle_submitted_at": "",
+        "raffle_scanned_by": "",
+        "lunch_status": "AVAILABLE",
+        "lunch_redeemed_at": "",
+        "lunch_scanned_by": "",
+        "tshirt_status": "AVAILABLE",
+        "tshirt_redeemed_at": "",
+        "tshirt_scanned_by": "",
+        "qr_file": f"{base_name}_maroon.png"
+    }
+    coupons_list.append(rec)
+    coupons_by_code[code] = rec
+    save_coupons_database()
+
+    # Append to Master Excel
+    try:
+        import openpyxl
+        EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
+        if os.path.exists(EXCEL_PATH):
+            wb = openpyxl.load_workbook(EXCEL_PATH)
+            ws = wb.active
+            ws.append([
+                rec["serial"], rec["code"],
+                rec["raffle_status"], rec["raffle_submitted_at"], rec["raffle_scanned_by"],
+                rec["lunch_status"], rec["lunch_redeemed_at"], rec["lunch_scanned_by"],
+                rec["tshirt_status"], rec["tshirt_redeemed_at"], rec["tshirt_scanned_by"],
+                rec["qr_file"]
+            ])
+            wb.save(EXCEL_PATH)
+            DOCS_DIR = os.path.join(BASE_DIR, "docs")
+            os.makedirs(DOCS_DIR, exist_ok=True)
+            import shutil
+            shutil.copy2(EXCEL_PATH, os.path.join(DOCS_DIR, "EEE_FEST_2026_Coupons.xlsx"))
+    except Exception as ex:
+        print(f"Excel manual append: {ex}")
+
+    return jsonify({"success": True, "message": f"Coupon {code} added successfully.", "coupon": rec})
+
+
+@app.route("/api/delete-all", methods=["POST"])
+def delete_all_coupons():
+    global coupons_list, coupons_by_code
+    data = request.get_json() or {}
+    password = data.get("password", "").strip()
+    if password != "eeefestadmin":
+        return jsonify({"success": False, "message": "Incorrect Super Admin password. Deletion unauthorized."}), 403
+
+    coupons_list = []
+    coupons_by_code = {}
+    save_coupons_database()
+
+    # Wipe Excel data rows
+    try:
+        import openpyxl
+        EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
+        if os.path.exists(EXCEL_PATH):
+            wb = openpyxl.load_workbook(EXCEL_PATH)
+            ws = wb.active
+            if ws.max_row > 1:
+                ws.delete_rows(2, ws.max_row)
+            wb.save(EXCEL_PATH)
+            DOCS_DIR = os.path.join(BASE_DIR, "docs")
+            os.makedirs(DOCS_DIR, exist_ok=True)
+            import shutil
+            shutil.copy2(EXCEL_PATH, os.path.join(DOCS_DIR, "EEE_FEST_2026_Coupons.xlsx"))
+    except Exception as ex:
+        print(f"Excel deletion: {ex}")
+
+    return jsonify({"success": True, "message": "All coupons have been permanently deleted from database."})
+
+
 @app.route("/api/coupons/<code_val>", methods=["DELETE"])
 def delete_coupon(code_val):
     global coupons_list, coupons_by_code
@@ -606,17 +717,18 @@ def generate_addon_coupons():
     import qrcode
 
     data = request.get_json() or {}
-    count = int(data.get("count", 4))
+    count = int(data.get("count", 1260))
+    start_from_1 = bool(data.get("start_from_1", False))
     if count < 1:
         count = 4
-    if count > 200:
-        count = 200
+    if count > 5000:
+        count = 5000
 
     CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
     LETTERS = [c for c in CHARS if c.isalpha()]
     DIGITS = [c for c in CHARS if c.isdigit()]
 
-    existing_codes = set(coupons_by_code.keys())
+    existing_codes = set(coupons_by_code.keys()) if not start_from_1 else set()
     new_codes = []
     while len(new_codes) < count:
         c = [random.choice(LETTERS), random.choice(DIGITS), random.choice(CHARS), random.choice(CHARS)]
@@ -625,7 +737,7 @@ def generate_addon_coupons():
         if code not in existing_codes and code not in new_codes:
             new_codes.append(code)
 
-    start_serial = len(coupons_list) + 1
+    start_serial = 1 if start_from_1 else (len(coupons_list) + 1)
     new_records = []
     QR_DIR = os.path.join(BASE_DIR, "qrcodes")
     os.makedirs(QR_DIR, exist_ok=True)
