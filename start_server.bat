@@ -1,23 +1,49 @@
 @echo off
-title EEE FEST 2026 - Raffle Draw & Verification Portal
+title EEE FEST 2026 - Master Verification & Admin Portal Server
 color 0B
-echo ============================================================
-echo   EEE FEST 2026 - RAFFLE DRAW ^& VERIFICATION PORTAL
-echo   Department of Electrical and Electronic Engineering
-echo   Daffodil International University
-echo ============================================================
+
+echo ======================================================================
+echo    EEE FEST 2026 - OFFICIAL RAFFLE DRAW ^& VERIFICATION PORTAL
+echo    Department of Electrical and Electronic Engineering
+echo    Daffodil International University (DIU)
+echo ======================================================================
 echo.
-echo Checking Python environment...
+
+:: Detect Python executable
+set PY_CMD=python
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH!
-    pause
-    exit /b 1
+    py --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        set PY_CMD=py
+    ) else (
+        echo [ERROR] Python was not found in your system PATH!
+        echo You can still open the portal offline without Python by double-clicking:
+        echo   docs\index.html
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
-echo Starting Flask Server on http://localhost:5000 ...
-echo Press Ctrl+C in this window to stop the server.
+echo [OK] Python detected.
 echo.
-start "" http://localhost:5000
-python app.py
+echo ======================================================================
+echo  PORTAL LAUNCH ADDRESSES:
+echo    - Local Computer: http://127.0.0.1:5000
+echo    - Default Super Admin: admin@eeefest.com / admin2026
+echo ======================================================================
+echo.
+echo Launching your default browser to http://127.0.0.1:5000 in 2 seconds...
+
+start "" http://127.0.0.1:5000
+
+echo.
+echo Starting Flask Verification Server...
+echo Press Ctrl+C in this console window anytime to stop the server.
+echo ======================================================================
+echo.
+
+%PY_CMD% app.py
+
 pause

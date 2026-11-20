@@ -3,11 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EEE FEST 2026 - Raffle Draw & Coupon Verification Portal</title>
+  <title>EEE FEST 2026 - Master Verification & Admin Portal</title>
+  
+  <!-- Standalone Offline Fallback Data: Allows double-clicking HTML directly without a web server! -->
+  <script src="./coupons_data.js"></script>
+  <script src="./admins_data.js"></script>
+  <script src="./settings_data.js"></script>
+
   <link rel="stylesheet" href="./style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
   <!-- HTML5 QR Code Scanner Library -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
@@ -22,30 +29,89 @@
         <span class="brand-subtitle">Official Raffle Draw & Verification Portal</span>
       </div>
     </div>
+
     <div class="nav-status">
       <span class="status-indicator live"></span>
-      <span class="status-label" id="systemStatusLabel">STANDALONE CLOUD PORTAL (1,260 COUPONS)</span>
-      <button class="btn btn-sm btn-outline-excel" id="exportCsvBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Export CSV
+      <span class="status-label" id="connectionStatusLabel">SYSTEM ONLINE</span>
+
+      <!-- Auth Navigation Section -->
+      <div id="authNavContainer" class="admin-nav-group">
+        <button id="openLoginBtn" class="btn btn-sm btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+          Admin Login
+        </button>
+      </div>
+
+      <button class="btn btn-sm btn-outline-excel" id="exportBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Export Excel
       </button>
     </div>
   </header>
 
+  <!-- Super Admin Live Scanning Controls Banner (Visible only for Super Admin) -->
+  <div id="superAdminDeck" class="container" style="display: none; margin-top: 1rem;">
+    <div class="super-admin-deck">
+      <div class="deck-header">
+        <span style="font-size: 1.3rem;">👑</span>
+        <div>
+          <div class="deck-title">SUPER ADMIN SCANNING CONTROLS</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Toggle which sections are currently active for admin scanning</div>
+        </div>
+      </div>
+
+      <div class="deck-toggles">
+        <label class="toggle-item">
+          <span>🎟️ Raffle Draw</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="toggleRaffle" checked>
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+
+        <label class="toggle-item">
+          <span>🍱 Lunch & Drinks</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="toggleLunch" checked>
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+
+        <label class="toggle-item">
+          <span>👕 T-Shirt</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="toggleTshirt" checked>
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+      </div>
+
+      <div>
+        <button id="openAdminModalBtn" class="btn btn-sm btn-superadmin">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Manage Admins
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Category Selector Tabs -->
   <div class="category-bar">
     <div class="container category-container">
-      <button class="cat-tab active" data-category="raffle">
+      <button class="cat-tab active" data-category="raffle" id="tabRaffle">
         <span class="tab-icon">🎟️</span>
         <span class="tab-text">Raffle Draw Entry</span>
+        <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
-      <button class="cat-tab" data-category="lunch">
+      <button class="cat-tab" data-category="lunch" id="tabLunch">
         <span class="tab-icon">🍱</span>
         <span class="tab-text">Lunch & Drinks Booth</span>
+        <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
-      <button class="cat-tab" data-category="tshirt">
+      <button class="cat-tab" data-category="tshirt" id="tabTshirt">
         <span class="tab-icon">👕</span>
         <span class="tab-text">T-Shirt Distribution</span>
+        <span class="tab-badge-off" style="display: none;">OFF</span>
       </button>
     </div>
   </div>
@@ -89,6 +155,9 @@
           </div>
         </div>
 
+        <!-- Section Lock Alert (shown if section is disabled or permission denied) -->
+        <div id="sectionLockNotice" style="display: none; padding: 0.75rem 1rem; background: var(--danger-bg); border-left: 4px solid var(--danger); margin-bottom: 1rem; border-radius: 4px; font-size: 0.85rem; color: #ff80ab;"></div>
+
         <!-- Scanner Viewport -->
         <div class="scanner-viewport-wrapper">
           <div id="qrReader" class="qr-reader-box">
@@ -122,7 +191,7 @@
         <form id="manualEntryForm" class="manual-form">
           <div class="input-group">
             <input type="text" id="manualCodeInput" class="form-input code-input" placeholder="e.g. D78G" maxlength="6" autocomplete="off" spellcheck="false">
-            <button type="submit" class="btn btn-primary btn-submit">
+            <button type="submit" class="btn btn-primary btn-submit" id="submitBtn">
               <span>Verify & Submit</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
@@ -194,9 +263,9 @@
               <th>SL</th>
               <th>Coupon Code</th>
               <th>Raffle Draw</th>
-              <th>Raffle Timestamp</th>
               <th>Lunch Status</th>
               <th>T-Shirt Status</th>
+              <th>Last Scanned By</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -220,6 +289,128 @@
     </section>
 
   </main>
+
+  <!-- ========================================== -->
+  <!-- MODALS: AUTH & ADMIN MANAGEMENT -->
+  <!-- ========================================== -->
+
+  <!-- Admin Login Modal -->
+  <div id="loginModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>🔑</span> Admin Portal Sign In
+        </h3>
+        <button class="modal-close-btn" id="closeLoginModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="loginErrorMsg" style="display: none; padding: 0.65rem 0.85rem; background: var(--danger-bg); border-left: 3px solid var(--danger); border-radius: 4px; font-size: 0.82rem; color: #ff80ab;"></div>
+
+        <form id="adminLoginForm">
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="loginEmailInput" class="form-input" placeholder="admin@eeefest.com" required autocomplete="email">
+          </div>
+          <div class="form-group" style="margin-top: 0.85rem;">
+            <label class="form-label">Password</label>
+            <input type="password" id="loginPasswordInput" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1.25rem;">Sign In to Dashboard</button>
+        </form>
+
+        <div class="quick-logins">
+          <div class="quick-logins-title">Quick Demo Login Accounts:</div>
+          <div class="quick-login-pills">
+            <button class="pill-btn" onclick="fillLoginForm('admin@eeefest.com', 'admin2026')">👑 Super Admin</button>
+            <button class="pill-btn" onclick="fillLoginForm('raffle@eeefest.com', 'fest2026raffle')">🎟️ Raffle Admin</button>
+            <button class="pill-btn" onclick="fillLoginForm('lunch@eeefest.com', 'fest2026lunch')">🍱 Lunch Admin</button>
+            <button class="pill-btn" onclick="fillLoginForm('tshirt@eeefest.com', 'fest2026tshirt')">👕 T-Shirt Admin</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Super Admin: Admin Management Modal -->
+  <div id="adminModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>👥</span> Super Admin - Admin Management Portal
+        </h3>
+        <button class="modal-close-btn" id="closeAdminModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Add New Admin Card -->
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem;">
+          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: var(--primary); margin-bottom: 0.85rem;">+ ADD NEW SCANNING ADMIN</h4>
+          <div id="addAdminMsg" style="display: none; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.75rem;"></div>
+
+          <form id="addAdminForm">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem;">
+              <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" id="newAdminName" class="form-input" placeholder="e.g. Tanvir Ahmed" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email Address</label>
+                <input type="email" id="newAdminEmail" class="form-input" placeholder="tanvir@eeefest.com" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" id="newAdminPassword" class="form-input" placeholder="Create a secure password" required>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 0.85rem;">
+              <label class="form-label">Authorized Scanning Sections:</label>
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="permRaffle" value="raffle" checked>
+                  <span>🎟️ Raffle Draw</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="permLunch" value="lunch" checked>
+                  <span>🍱 Lunch & Drinks</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="permTshirt" value="tshirt" checked>
+                  <span>👕 T-Shirt Distribution</span>
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-sm btn-primary" style="margin-top: 1rem;">Create Admin Account</button>
+          </form>
+        </div>
+
+        <!-- Existing Admins Roster -->
+        <div>
+          <h4 style="font-family: 'Rajdhani', sans-serif; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">AUTHORIZED SYSTEM ADMINS</h4>
+          <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+            <table class="admin-list-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Allowed Sections</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="adminListTableBody">
+                <tr>
+                  <td colspan="5" class="text-center py-2">Loading admins...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- Footer -->
   <footer class="app-footer">

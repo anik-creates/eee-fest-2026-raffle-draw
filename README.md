@@ -2,43 +2,58 @@
 
 Official coupon generation, printable batch compilation, and anti-counterfeit QR code verification system designed for **EEE FEST 2026**, organized by the **Department of Electrical & Electronic Engineering (EEE)** at **Daffodil International University (DIU)**.
 
+Developed by **Anik Sarker**.
+
 ---
 
-## 🌟 Overview & Key Features
+## 🌟 Key Updates & Features (v2.0)
 
 1. **1,260 Unique Cryptographic Coupons**:
    - Each coupon has a unique 4-character alphanumeric code (e.g. `D78G`, `H92U`, `Z9D2`) guaranteeing both letters and digits, with zero ambiguous characters (`0/O`, `1/I` removed).
-   - Each coupon contains **4 tear-off stubs** with identical matching codes:
-     - **Stub 1**: `RAFFLE DRAW` (Participant copy) — Includes festival maroon QR code
-     - **Stub 2**: `LUNCH & DRINKS` (Food booth copy) — Includes matching black coupon number
-     - **Stub 3**: `RAFFLE DRAW` (Drop box copy) — Includes festival maroon QR code
-     - **Stub 4**: `T-SHIRT` (Merchandise booth copy) — Includes matching blue coupon number
+   - **4 Tear-off Stubs per Coupon** — Each stub now has **both a dedicated QR code and an inline coupon number**:
+     - **Stub 1**: `RAFFLE DRAW` (Participant copy) — Festival Maroon QR code + inline code (`Cupon No: D78G`)
+     - **Stub 2**: `LUNCH & DRINKS` (Food booth copy) — High-contrast Black QR code + inline code (`Cupon No: D78G`)
+     - **Stub 3**: `RAFFLE DRAW` (Drop box copy) — Festival Maroon QR code + inline code (`Cupon No: D78G`)
+     - **Stub 4**: `T-SHIRT` (Merchandise booth copy) — Navy Blue QR code + inline code (`Cupon No: D78G`)
+   - **Pixel-Perfect Inline Alignment**: The coupon number is printed directly inline with the colon of `Cupon No:` with zero text overlap.
 
 2. **315-Page High-Precision Printable PDF (`EEE_FEST_2026_Coupons_Printable.pdf`)**:
    - Exactly **4 coupons per A4 portrait page** (1,260 coupons ÷ 4 = 315 pages).
-   - High-resolution 300 DPI raster backdrop with vector text and sharp vector-aligned QR codes.
-   - Clean dashed cutting guidelines with scissors indicators (`✂`) for fast cutting with a guillotine or paper trimmer.
-   - Page numbering and coupon range markers on every page (e.g. `Page 1 of 315 | Coupons #0001 - #0004`).
+   - Vector-crisp text and sharp QR codes on a high-resolution 300 DPI Canva template.
+   - Clean dashed cutting guidelines with scissors indicators (`✂`) for rapid trimming.
+   - Running footer with page numbering and coupon range markers (e.g. `Page 1 of 315 | Coupons #0001 - #0004`).
 
-3. **Master Excel Database (`EEE_FEST_2026_Coupons.xlsx`)**:
-   - Formatted Excel sheet tracking Serial Number, Coupon Code, QR Data, Raffle Status, Submission Timestamps, Lunch Status, T-Shirt Status, and QR file references.
-   - Includes an executive Summary Dashboard.
-   - **Real-Time Two-Way Sync**: When coupons are scanned and submitted on the web portal, the Excel sheet is automatically updated in real-time!
+3. **Multi-Role Admin & Super Admin System**:
+   - **Super Admin Deck (`admin@eeefest.com` / `admin2026`)**:
+     - **Live Scanning Controls**: Toggle switches to activate or pause scanning for any section (**Raffle Draw**, **Lunch & Drinks**, **T-Shirt**).
+     - **Admin Management Portal**: Add new admins by entering their **Full Name**, **Email Address**, **Password**, and checking their **Authorized Scanning Sections**.
+     - View and manage the roster of all registered booth admins.
+   - **Role-Based Scanning Permissions**:
+     - Admins can log in and scan only the sections they are authorized for.
+     - If an admin attempts to scan an unauthorized section or if a section is disabled by the Super Admin, the scan is blocked with an explanatory alert.
+     - Logs record the exact admin name and timestamp for every verified stub.
 
-4. **Live Anti-Counterfeit Verification Portal**:
-   - **Live Camera Scanner**: High-speed camera scanning powered by `html5-qrcode` for mobile phones, tablets, and laptops.
-   - **Multi-Camera & Torch Support**: Flip between front/rear cameras and scan under low-light festival conditions.
-   - **Manual Code Entry**: Fast typing fallback with auto-uppercase and instant keyboard submission.
-   - **Three-Tier Verification Protection**:
-     - 🟢 **VALID & SUBMITTED**: Green badge, audio chime, marks ticket as registered with exact timestamp.
-     - 🟡 **DUPLICATE / ALREADY SUBMITTED**: Warning buzzer, alerts admin with previous submission timestamp to prevent duplicate or reused stubs.
-     - 🔴 **COUNTERFEIT ALERT**: Alarm sound, flags codes not present in the official 1,260 database.
-   - **Live Audit Feed & Live Statistics**: Real-time counter of total issued (1,260), claimed, and remaining unsubmitted.
-   - **Live Table & Instant Search**: Filter by status and search instantly by code or serial number.
+4. **100% Offline & Dual Deployment Ready**:
+   - **Zero-Server Offline Mode**: Double-click `open_offline_portal.bat` or open `docs/index.html` directly in any web browser (`file:///`). It uses embedded offline data (`coupons_data.js`, `admins_data.js`, `settings_data.js`) with `localStorage` state persistence.
+   - **Local Flask Server**: Double-click `start_server.bat` or run `python app.py` to start the live server at `http://127.0.0.1:5000` with real-time Excel updates.
+   - **Live Cloud (GitHub Pages)**: [https://anik-creates.github.io/eee-fest-2026-raffle-draw/](https://anik-creates.github.io/eee-fest-2026-raffle-draw/)
 
-5. **Dual Deployment Modes**:
-   - **Local Server (`app.py` / `start_server.bat`)**: Full Python Flask backend running on `http://localhost:5000` with direct live Excel updates.
-   - **GitHub Pages / Standalone Cloud (`docs/`)**: Client-side version that runs anywhere from a browser with `localStorage` state persistence.
+5. **Master Excel Spreadsheet (`EEE_FEST_2026_Coupons.xlsx`)**:
+   - Real-time row-by-row synchronization: updates status, timestamp, and scanning admin in columns for Raffle, Lunch, and T-Shirt.
+   - Includes an executive Summary Dashboard sheet.
+
+---
+
+## 🔑 Default Admin Credentials
+
+| Role | Name | Email | Password | Allowed Sections |
+| :--- | :--- | :--- | :--- | :--- |
+| **👑 Super Admin** | Anik Sarker | `admin@eeefest.com` | `admin2026` | **All Sections** + Admin Controls |
+| **🎟️ Raffle Admin** | Raffle Booth | `raffle@eeefest.com` | `fest2026raffle` | Raffle Draw |
+| **🍱 Food Admin** | Lunch Booth | `lunch@eeefest.com` | `fest2026lunch` | Lunch & Drinks |
+| **👕 T-Shirt Admin** | Merchandise Booth | `tshirt@eeefest.com` | `fest2026tshirt` | T-Shirt Distribution |
+
+> *The Super Admin can create additional admins anytime through the "Manage Admins" button in the portal.*
 
 ---
 
@@ -49,45 +64,50 @@ Official coupon generation, printable batch compilation, and anti-counterfeit QR
 ├── EEE_FEST_2026_Coupons_Printable.pdf    # Complete 315-page printable PDF (4 per A4 page)
 ├── EEE_FEST_2026_Coupons.xlsx            # Master Excel spreadsheet (auto-syncing)
 ├── coupons_db.json                       # Master JSON database of all 1,260 coupons
-├── generate_coupons.py                   # Automated batch generator script
-├── app.py                                # Flask web application & verification API
-├── start_server.bat                      # One-click Windows launcher
-├── qrcodes/                              # 1,260 high-res QR code PNG images
+├── coupons_data.js                       # Standalone offline coupons data
+├── admins_db.json                        # Master admin accounts database
+├── admins_data.js                        # Standalone offline admins data
+├── settings.json                         # Global scanning toggles config
+├── settings_data.js                      # Standalone offline settings data
+├── generate_coupons.py                   # Automated batch generator suite v2.0
+├── app.py                                # Flask backend application & verification API
+├── start_server.bat                      # One-click Windows local server launcher
+├── open_offline_portal.bat               # One-click offline browser launcher (no Python required)
+├── qrcodes/                              # 1,260 QR codes (color-themed variants)
 ├── templates/
-│   └── index.html                        # Verification portal frontend template
+│   └── index.html                        # Verification portal frontend
 ├── static/
 │   ├── css/style.css                     # Neon cyberpunk festival stylesheet
-│   └── js/app.js                         # Web Audio API & QR scanner engine
-└── docs/                                 # GitHub Pages standalone deployment
+│   └── js/
+│       ├── app.js                        # Web Audio API, QR scanner, & dual runtime engine
+│       ├── coupons_data.js
+│       ├── admins_data.js
+│       └── settings_data.js
+└── docs/                                 # GitHub Pages deployment directory
     ├── index.html
     ├── style.css
     ├── app.js
-    └── coupons_db.json
+    ├── coupons_db.json
+    ├── coupons_data.js
+    ├── admins_data.js
+    └── settings_data.js
 ```
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 How to Run the Verification Portal
 
-### 1. Run the Local Verification Server (Windows)
-Double-click `start_server.bat` or run:
+### Method 1: One-Click Offline (No Python Required)
+1. Double-click `open_offline_portal.bat` or open `docs/index.html` in your web browser.
+2. The entire portal loads instantly with all 1,260 coupons and admin accounts stored locally.
 
-```bash
-python app.py
-```
+### Method 2: Local Python Server (Real-time Excel Sync)
+1. Double-click `start_server.bat` (or run `python app.py`).
+2. Open `http://127.0.0.1:5000` in your browser.
+3. To connect smartphones and tablets over local Wi-Fi, open `http://<YOUR-PC-IP>:5000`.
 
-Open your browser at `http://localhost:5000`.
-
-To connect from other mobile phones or tablets at the registration booth on the same local Wi-Fi network:
-```text
-http://<YOUR-PC-LOCAL-IP>:5000
-```
-
-### 2. Regenerate Coupons (Optional)
-If you ever want to regenerate all 1,260 coupons, Excel, QRs, and the PDF:
-```bash
-python generate_coupons.py
-```
+### Method 3: Cloud (GitHub Pages)
+Visit [https://anik-creates.github.io/eee-fest-2026-raffle-draw/](https://anik-creates.github.io/eee-fest-2026-raffle-draw/).
 
 ---
 
@@ -95,13 +115,13 @@ python generate_coupons.py
 
 1. Open `EEE_FEST_2026_Coupons_Printable.pdf` in Adobe Acrobat or any modern PDF viewer.
 2. Select **Paper Size: A4**.
-3. Set **Scale to 100% / Actual Size** (do NOT use "Fit to Printable Area").
+3. Set **Scale to 100% / Actual Size** (do NOT choose "Fit to Printable Area").
 4. Print in high quality on 150–250 GSM paper or cardstock.
-5. Cut along the dashed horizontal lines marked with `✂` to yield 4 crisp coupons per sheet.
+5. Cut along the dashed horizontal lines marked with `✂` to produce 4 coupons per sheet.
 
 ---
 
 ## 👨‍💻 Author & Credits
 
 - **Organized by**: Department of EEE, Daffodil International University (DIU)
-- **Design & System Development**: Anik Sarker
+- **System Design & Development**: Anik Sarker

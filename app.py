@@ -1,40 +1,122 @@
 """
-EEE FEST 2026 - Raffle Draw & Festival Pass Verification Portal
-Flask Backend Application
+EEE FEST 2026 - Master Verification Portal Backend Suite
+Supports:
+- Role-based Admin Authentication (Super Admin + Scanners)
+- Super Admin Dynamic Section Controls (Toggle Raffle, Lunch, T-Shirt)
+- Admin Management (Add/Delete Admins with email, password, role & permissions)
+- Real-time Anti-Counterfeit & Duplicate QR Verification
+- Real-time Excel (.xlsx) Synchronization
 """
 
 import os
 import json
+import time
 import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 import openpyxl
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_PATH = os.path.join(BASE_DIR, "coupons_db.json")
+JS_DATA_PATH = os.path.join(BASE_DIR, "coupons_data.js")
+ADMINS_JSON_PATH = os.path.join(BASE_DIR, "admins_db.json")
+ADMINS_JS_PATH = os.path.join(BASE_DIR, "admins_data.js")
+SETTINGS_PATH = os.path.join(BASE_DIR, "settings.json")
+SETTINGS_JS_PATH = os.path.join(BASE_DIR, "settings_data.js")
 EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-# In-memory database
+# In-memory states
 coupons_list = []
 coupons_by_code = {}
+admins_list = []
+settings_state = {
+    "enable_raffle": True,
+    "enable_lunch": True,
+    "enable_tshirt": True,
+    "event_name": "DIU EEE FEST 2026",
+    "updated_at": "2026-11-20 08:00:00 AM"
+}
 recent_activity = []
 
 
-def load_database():
-    global coupons_list, coupons_by_code
+def load_all_databases():
+    global coupons_list, coupons_by_code, admins_list, settings_state
+
+    # 1. Coupons DB
     if os.path.exists(JSON_PATH):
         with open(JSON_PATH, "r", encoding="utf-8") as f:
             coupons_list = json.load(f)
         coupons_by_code = {item["code"].upper(): item for item in coupons_list}
         print(f"Loaded {len(coupons_list)} coupons from database.")
     else:
-        print("Warning: coupons_db.json not found! Please run generate_coupons.py first.")
+        print("Warning: coupons_db.json not found! Please run generate_coupons.py.")
+
+    # 2. Admins DB
+    if os.path.exists(ADMINS_JSON_PATH):
+        with open(ADMINS_JSON_PATH, "r", encoding="utf-8") as f:
+            admins_list = json.load(f)
+        print(f"Loaded {len(admins_list)} admins from database.")
+    else:
+        # Fallback default Super Admin
+        admins_list = [
+            {
+                "id": "admin_1",
+                "name": "Super Admin (Anik Sarker)",
+                "email": "admin@eeefest.com",
+                "password": "admin2026",
+                "role": "superadmin",
+                "allowed_sections": ["raffle", "lunch", "tshirt"],
+                "created_at": "2026-11-20 08:00:00 AM"
+            }
+        ]
+        save_admins_database()
+
+    # 3. Settings
+    if os.path.exists(SETTINGS_PATH):
+        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+            settings_state.update(json.load(f))
+        print("Loaded system settings.")
 
 
-def save_database():
+def save_coupons_database():
     with open(JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(coupons_list, f, indent=2)
+
+    # Sync standalone JS files
+    js_content = f"window.INITIAL_COUPONS_DATA = {json.dumps(coupons_list)};\n"
+    with open(JS_DATA_PATH, "w", encoding="utf-8") as f:
+        f.write(js_content)
+    if os.path.exists(DOCS_DIR):
+        with open(os.path.join(DOCS_DIR, "coupons_data.js"), "w", encoding="utf-8") as f:
+            f.write(js_content)
+        with open(os.path.join(DOCS_DIR, "coupons_db.json"), "w", encoding="utf-8") as f:
+            json.dump(coupons_list, f, indent=2)
+
+
+def save_admins_database():
+    with open(ADMINS_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(admins_list, f, indent=2)
+
+    admins_js = f"window.INITIAL_ADMINS_DATA = {json.dumps(admins_list)};\n"
+    with open(ADMINS_JS_PATH, "w", encoding="utf-8") as f:
+        f.write(admins_js)
+    if os.path.exists(DOCS_DIR):
+        with open(os.path.join(DOCS_DIR, "admins_data.js"), "w", encoding="utf-8") as f:
+            f.write(admins_js)
+
+
+def save_settings_database():
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(settings_state, f, indent=2)
+
+    settings_js = f"window.INITIAL_SETTINGS_DATA = {json.dumps(settings_state)};\n"
+    with open(SETTINGS_JS_PATH, "w", encoding="utf-8") as f:
+        f.write(settings_js)
+    if os.path.exists(DOCS_DIR):
+        with open(os.path.join(DOCS_DIR, "settings_data.js"), "w", encoding="utf-8") as f:
+            f.write(settings_js)
 
 
 def sync_excel_row(coupon):
@@ -45,20 +127,32 @@ def sync_excel_row(coupon):
         wb = openpyxl.load_workbook(EXCEL_PATH)
         ws = wb["EEE FEST Coupons Master"]
         row_num = coupon["serial"] + 1  # 1-based header offset
-        
-        ws.cell(row=row_num, column=4, value=coupon.get("raffle_status", "AVAILABLE"))
-        ws.cell(row=row_num, column=5, value=coupon.get("raffle_submitted_at", ""))
+
+        # Columns:
+        # 1: SL No, 2: Coupon Code
+        # 3: Raffle Draw Status, 4: Raffle Scanned At, 5: Raffle Scanned By
+        # 6: Lunch Status, 7: Lunch Scanned At, 8: Lunch Scanned By
+        # 9: T-Shirt Status, 10: T-Shirt Scanned At, 11: T-Shirt Scanned By
+        ws.cell(row=row_num, column=3, value=coupon.get("raffle_status", "AVAILABLE"))
+        ws.cell(row=row_num, column=4, value=coupon.get("raffle_submitted_at", ""))
+        ws.cell(row=row_num, column=5, value=coupon.get("raffle_scanned_by", ""))
+
         ws.cell(row=row_num, column=6, value=coupon.get("lunch_status", "AVAILABLE"))
         ws.cell(row=row_num, column=7, value=coupon.get("lunch_redeemed_at", ""))
-        ws.cell(row=row_num, column=8, value=coupon.get("tshirt_status", "AVAILABLE"))
-        ws.cell(row=row_num, column=9, value=coupon.get("tshirt_redeemed_at", ""))
-        
+        ws.cell(row=row_num, column=8, value=coupon.get("lunch_scanned_by", ""))
+
+        ws.cell(row=row_num, column=9, value=coupon.get("tshirt_status", "AVAILABLE"))
+        ws.cell(row=row_num, column=10, value=coupon.get("tshirt_redeemed_at", ""))
+        ws.cell(row=row_num, column=11, value=coupon.get("tshirt_scanned_by", ""))
+
         wb.save(EXCEL_PATH)
+    except PermissionError:
+        print("Warning: Excel is currently open. Row update skipped for now to avoid lock.")
     except Exception as e:
         print(f"Excel sync error: {e}")
 
 
-load_database()
+load_all_databases()
 
 
 @app.route("/")
@@ -66,10 +160,151 @@ def index():
     return render_template("index.html")
 
 
+# ==========================================
+# AUTH & ADMIN MANAGEMENT ENDPOINTS
+# ==========================================
+
+@app.route("/api/auth/login", methods=["POST"])
+def admin_login():
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+
+    if not email or not password:
+        return jsonify({"success": False, "message": "Email and password are required."}), 400
+
+    admin = next((a for a in admins_list if a.get("email", "").lower() == email), None)
+    if not admin or admin.get("password") != password:
+        return jsonify({"success": False, "message": "Invalid email or password."}), 401
+
+    admin_profile = {
+        "id": admin["id"],
+        "name": admin["name"],
+        "email": admin["email"],
+        "role": admin.get("role", "admin"),
+        "allowed_sections": admin.get("allowed_sections", ["raffle"])
+    }
+    return jsonify({
+        "success": True,
+        "message": f"Welcome back, {admin['name']}!",
+        "admin": admin_profile
+    })
+
+
+@app.route("/api/admins", methods=["GET"])
+def get_admins():
+    # Return admins without raw passwords
+    safe_admins = [
+        {
+            "id": a["id"],
+            "name": a["name"],
+            "email": a["email"],
+            "role": a.get("role", "admin"),
+            "allowed_sections": a.get("allowed_sections", []),
+            "created_at": a.get("created_at", "")
+        }
+        for a in admins_list
+    ]
+    return jsonify({"success": True, "admins": safe_admins})
+
+
+@app.route("/api/admins", methods=["POST"])
+def add_admin():
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    allowed_sections = data.get("allowed_sections", ["raffle"])
+
+    if not name or not email or not password:
+        return jsonify({"success": False, "message": "Name, email, and password are required."}), 400
+
+    if any(a.get("email", "").lower() == email for a in admins_list):
+        return jsonify({"success": False, "message": f"An admin with email '{email}' already exists."}), 409
+
+    if not isinstance(allowed_sections, list) or len(allowed_sections) == 0:
+        allowed_sections = ["raffle"]
+
+    new_admin = {
+        "id": f"admin_{int(time.time()*1000)}",
+        "name": name,
+        "email": email,
+        "password": password,
+        "role": "admin",
+        "allowed_sections": allowed_sections,
+        "created_at": datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    }
+
+    admins_list.append(new_admin)
+    save_admins_database()
+
+    return jsonify({
+        "success": True,
+        "message": f"Admin '{name}' ({email}) created successfully!",
+        "admin": {
+            "id": new_admin["id"],
+            "name": new_admin["name"],
+            "email": new_admin["email"],
+            "role": new_admin["role"],
+            "allowed_sections": new_admin["allowed_sections"],
+            "created_at": new_admin["created_at"]
+        }
+    })
+
+
+@app.route("/api/admins/<admin_id>", methods=["DELETE"])
+def delete_admin(admin_id):
+    global admins_list
+    target = next((a for a in admins_list if a.get("id") == admin_id), None)
+    if not target:
+        return jsonify({"success": False, "message": "Admin not found."}), 404
+
+    if target.get("role") == "superadmin":
+        return jsonify({"success": False, "message": "Super Admin account cannot be deleted!"}), 403
+
+    admins_list = [a for a in admins_list if a.get("id") != admin_id]
+    save_admins_database()
+
+    return jsonify({"success": True, "message": f"Admin '{target.get('name')}' removed successfully."})
+
+
+# ==========================================
+# SETTINGS ENDPOINTS (SUPER ADMIN CONTROL)
+# ==========================================
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify({"success": True, "settings": settings_state})
+
+
+@app.route("/api/settings", methods=["POST"])
+def update_settings():
+    data = request.get_json() or {}
+    if "enable_raffle" in data:
+        settings_state["enable_raffle"] = bool(data["enable_raffle"])
+    if "enable_lunch" in data:
+        settings_state["enable_lunch"] = bool(data["enable_lunch"])
+    if "enable_tshirt" in data:
+        settings_state["enable_tshirt"] = bool(data["enable_tshirt"])
+
+    settings_state["updated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    save_settings_database()
+
+    return jsonify({
+        "success": True,
+        "message": "Scanning section controls updated successfully!",
+        "settings": settings_state
+    })
+
+
+# ==========================================
+# VERIFICATION & STATS
+# ==========================================
+
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
     category = request.args.get("category", "raffle").lower()
-    
+
     total = len(coupons_list)
     if category == "lunch":
         submitted = sum(1 for c in coupons_list if c.get("lunch_status") == "REDEEMED")
@@ -77,7 +312,7 @@ def get_stats():
         submitted = sum(1 for c in coupons_list if c.get("tshirt_status") == "REDEEMED")
     else:
         submitted = sum(1 for c in coupons_list if c.get("raffle_status") == "SUBMITTED")
-        
+
     remaining = total - submitted
     percentage = round((submitted / total * 100), 1) if total > 0 else 0
 
@@ -86,6 +321,7 @@ def get_stats():
         "submitted": submitted,
         "remaining": remaining,
         "percentage": percentage,
+        "settings": settings_state,
         "recent_activity": recent_activity[:15]
     })
 
@@ -95,6 +331,7 @@ def verify_coupon():
     data = request.get_json() or {}
     raw_code = data.get("code", "").strip().upper()
     category = data.get("category", "raffle").lower()
+    admin_email = data.get("admin_email", "").strip().lower()
 
     # Extract code if a full URL was scanned
     if "CODE=" in raw_code:
@@ -109,16 +346,76 @@ def verify_coupon():
             "message": "Empty coupon code received."
         }), 400
 
-    # 1. Check if coupon code exists in database
-    coupon = coupons_by_code.get(raw_code)
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
 
+    # Determine Category parameters
+    if category == "lunch":
+        status_key = "lunch_status"
+        time_key = "lunch_redeemed_at"
+        by_key = "lunch_scanned_by"
+        action_name = "Lunch & Drinks"
+        claimed_value = "REDEEMED"
+        setting_key = "enable_lunch"
+    elif category == "tshirt":
+        status_key = "tshirt_status"
+        time_key = "tshirt_redeemed_at"
+        by_key = "tshirt_scanned_by"
+        action_name = "T-Shirt"
+        claimed_value = "REDEEMED"
+        setting_key = "enable_tshirt"
+    else:
+        category = "raffle"
+        status_key = "raffle_status"
+        time_key = "raffle_submitted_at"
+        by_key = "raffle_scanned_by"
+        action_name = "Raffle Draw"
+        claimed_value = "SUBMITTED"
+        setting_key = "enable_raffle"
+
+    # 1. Super Admin Section Control Check: Is this section active?
+    if not settings_state.get(setting_key, True):
+        log_entry = {
+            "time": timestamp,
+            "code": raw_code,
+            "status": "DISABLED",
+            "category": action_name,
+            "message": f"Scan rejected: {action_name} scanning disabled by Super Admin"
+        }
+        recent_activity.insert(0, log_entry)
+        return jsonify({
+            "success": False,
+            "status": "SECTION_DISABLED",
+            "message": f"Scanning for {action_name} is currently DISABLED by the Super Admin."
+        })
+
+    # 2. Admin Permission Check: Is this admin allowed to scan this section?
+    admin = next((a for a in admins_list if a.get("email", "").lower() == admin_email), None)
+    admin_name = admin["name"] if admin else "Admin Desk"
+    if admin and admin.get("role") != "superadmin":
+        allowed = admin.get("allowed_sections", [])
+        if category not in allowed:
+            log_entry = {
+                "time": timestamp,
+                "code": raw_code,
+                "status": "DENIED",
+                "category": action_name,
+                "message": f"Permission denied for admin '{admin_name}'"
+            }
+            recent_activity.insert(0, log_entry)
+            return jsonify({
+                "success": False,
+                "status": "PERMISSION_DENIED",
+                "message": f"ACCESS DENIED: Your admin account ({admin_name}) is only authorized for: {', '.join([s.title() for s in allowed])}."
+            })
+
+    # 3. Code Existence Check (Anti-Counterfeit)
+    coupon = coupons_by_code.get(raw_code)
     if not coupon:
         log_entry = {
             "time": timestamp,
             "code": raw_code,
             "status": "COUNTERFEIT",
-            "category": category.upper(),
+            "category": action_name,
             "message": "Unregistered Code (Potential Counterfeit)"
         }
         recent_activity.insert(0, log_entry)
@@ -129,48 +426,32 @@ def verify_coupon():
             "message": f"COUNTERFEIT ALERT! Code '{raw_code}' does NOT exist in the official EEE FEST 2026 database."
         })
 
-    # 2. Check category submission status
-    if category == "lunch":
-        status_key = "lunch_status"
-        time_key = "lunch_redeemed_at"
-        action_name = "Lunch & Drinks"
-        claimed_value = "REDEEMED"
-    elif category == "tshirt":
-        status_key = "tshirt_status"
-        time_key = "tshirt_redeemed_at"
-        action_name = "T-Shirt"
-        claimed_value = "REDEEMED"
-    else:
-        status_key = "raffle_status"
-        time_key = "raffle_submitted_at"
-        action_name = "Raffle Draw"
-        claimed_value = "SUBMITTED"
-
-    # Already submitted check
+    # 4. Already Submitted / Duplicate Check
     if coupon.get(status_key) == claimed_value:
         prev_time = coupon.get(time_key, "Earlier")
+        prev_by = coupon.get(by_key, "Another Admin")
         log_entry = {
             "time": timestamp,
             "code": raw_code,
             "serial": coupon["serial"],
             "status": "ALREADY_SUBMITTED",
             "category": action_name,
-            "message": f"Duplicate scan: Already submitted at {prev_time}"
+            "message": f"Duplicate scan: Already submitted at {prev_time} by {prev_by}"
         }
         recent_activity.insert(0, log_entry)
         return jsonify({
             "success": False,
             "status": "ALREADY_SUBMITTED",
             "coupon": coupon,
-            "message": f"ALREADY SUBMITTED! Coupon #{coupon['serial']:04d} ({raw_code}) was already registered for {action_name} on {prev_time}. Duplicate / counterfeit entry detected!"
+            "message": f"ALREADY SUBMITTED! Coupon #{coupon['serial']:04d} ({raw_code}) was already registered for {action_name} on {prev_time} by {prev_by}. Duplicate entry blocked!"
         })
 
-    # Valid and not yet submitted: Mark as submitted!
+    # 5. Success: Mark as submitted
     coupon[status_key] = claimed_value
     coupon[time_key] = timestamp
+    coupon[by_key] = admin_name
 
-    # Save to JSON and sync Excel
-    save_database()
+    save_coupons_database()
     sync_excel_row(coupon)
 
     log_entry = {
@@ -179,7 +460,7 @@ def verify_coupon():
         "serial": coupon["serial"],
         "status": "SUCCESS",
         "category": action_name,
-        "message": f"Successfully verified & registered ({action_name})"
+        "message": f"Verified & redeemed by {admin_name}"
     }
     recent_activity.insert(0, log_entry)
 
@@ -187,7 +468,7 @@ def verify_coupon():
         "success": True,
         "status": "SUCCESS",
         "coupon": coupon,
-        "message": f"SUCCESS! Coupon #{coupon['serial']:04d} ({raw_code}) verified & successfully registered for {action_name}."
+        "message": f"VERIFIED! Coupon #{coupon['serial']:04d} ({raw_code}) successfully registered for {action_name} by {admin_name}."
     })
 
 
@@ -240,14 +521,17 @@ def reset_coupon():
     if category == "lunch":
         coupon["lunch_status"] = "AVAILABLE"
         coupon["lunch_redeemed_at"] = ""
+        coupon["lunch_scanned_by"] = ""
     elif category == "tshirt":
         coupon["tshirt_status"] = "AVAILABLE"
         coupon["tshirt_redeemed_at"] = ""
+        coupon["tshirt_scanned_by"] = ""
     else:
         coupon["raffle_status"] = "AVAILABLE"
         coupon["raffle_submitted_at"] = ""
+        coupon["raffle_scanned_by"] = ""
 
-    save_database()
+    save_coupons_database()
     sync_excel_row(coupon)
 
     return jsonify({"success": True, "message": f"Coupon {code} reset to AVAILABLE"})
@@ -259,16 +543,15 @@ def export_excel():
         return send_file(
             EXCEL_PATH,
             as_attachment=True,
-            download_name=f"EEE_FEST_2026_Coupons_Updated_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            download_name=f"EEE_FEST_2026_Coupons_Master_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         )
     return jsonify({"error": "Excel file not found"}), 404
 
 
 if __name__ == "__main__":
-    # Host on all interfaces so phones on the same Wi-Fi can connect
     print("=" * 60)
-    print("EEE FEST 2026 - Verification Portal Server Starting")
-    print("Access locally: http://localhost:5000")
+    print("EEE FEST 2026 - Master Verification Portal Server Starting")
+    print("Access locally: http://127.0.0.1:5000")
     print("Access from mobile on same Wi-Fi: http://<your-pc-ip>:5000")
     print("=" * 60)
     app.run(host="0.0.0.0", port=5000, debug=False)

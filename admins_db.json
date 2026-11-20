@@ -1,0 +1,48 @@
+[
+  {
+    "id": "admin_1",
+    "name": "Super Admin (Anik Sarker)",
+    "email": "admin@eeefest.com",
+    "password": "admin2026",
+    "role": "superadmin",
+    "allowed_sections": [
+      "raffle",
+      "lunch",
+      "tshirt"
+    ],
+    "created_at": "2026-11-20 08:00:00 AM"
+  },
+  {
+    "id": "admin_2",
+    "name": "Raffle Booth Admin",
+    "email": "raffle@eeefest.com",
+    "password": "fest2026raffle",
+    "role": "admin",
+    "allowed_sections": [
+      "raffle"
+    ],
+    "created_at": "2026-11-20 08:00:00 AM"
+  },
+  {
+    "id": "admin_3",
+    "name": "Food Booth Admin",
+    "email": "lunch@eeefest.com",
+    "password": "fest2026lunch",
+    "role": "admin",
+    "allowed_sections": [
+      "lunch"
+    ],
+    "created_at": "2026-11-20 08:00:00 AM"
+  },
+  {
+    "id": "admin_4",
+    "name": "T-Shirt Booth Admin",
+    "email": "tshirt@eeefest.com",
+    "password": "fest2026tshirt",
+    "role": "admin",
+    "allowed_sections": [
+      "tshirt"
+    ],
+    "created_at": "2026-11-20 08:00:00 AM"
+  }
+]
