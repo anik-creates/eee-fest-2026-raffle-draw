@@ -60,7 +60,7 @@ System Architect & Developer: **Anik Sarker**
 
 | Role | Name | Email | Password | Allowed Sections |
 | :--- | :--- | :--- | :--- | :--- |
-| **Super Admin** | Anik Sarker | `admin@eeefest.com` | `admin2026` | **All Sections** + Admin Controls |
+| **Super Admin** | Anik Sarker | `admin@eeefest.com` | `eeefestadmin` | **All Sections** + Admin Controls |
 | **Raffle Admin** | Raffle Booth | `raffle@eeefest.com` | `fest2026raffle` | Raffle Draw |
 | **Food Admin** | Lunch Booth | `lunch@eeefest.com` | `fest2026lunch` | Lunch & Drinks |
 | **T-Shirt Admin** | Merchandise Booth | `tshirt@eeefest.com` | `fest2026tshirt` | T-Shirt Distribution |

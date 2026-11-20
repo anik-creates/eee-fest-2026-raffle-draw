@@ -65,7 +65,7 @@ def load_all_databases():
                 "id": "admin_1",
                 "name": "Super Admin (Anik Sarker)",
                 "email": "admin@eeefest.com",
-                "password": "admin2026",
+                "password": "eeefestadmin",
                 "role": "superadmin",
                 "allowed_sections": ["raffle", "lunch", "tshirt"],
                 "created_at": "2026-11-20 08:00:00 AM"
@@ -637,24 +637,24 @@ def generate_addon_coupons():
     save_coupons_database()
 
     # Compile Addon PDF
-    TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST  Cupon - 2026.png")
+    TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST Cupon - 2026.png")
     c = canvas.Canvas(ADDON_PDF_PATH, pagesize=A4)
     pw, ph = A4
     cw = 565.0
-    ch = cw * (975.0 / 2909.0)
-    scale = cw / 2909.0
+    ch = cw * (1125.0 / 3356.0)
+    scale = cw / 3356.0
     margin_top = 18.0
     gap = (ph - 2 * margin_top - 4 * ch) / 3.0
     x0 = (pw - cw) / 2.0
 
     stubs_config = [
-        (1060, MAROON_PDF, "maroon", 560, 277),
-        (1520, BLACK_PDF, "black", 575, 283),
-        (1980, MAROON_PDF, "maroon", 580, 283),
-        (2440, BLUE_PDF, "blue", 580, 282),
+        (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
+        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
+        (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
-    qr_sz = 100 * scale
-    c.setFont("Helvetica-Bold", 36 * scale)
+    qr_pixels = 175
+    qr_sz = qr_pixels * scale
 
     addon_pages = (len(new_codes) + 3) // 4
     for p in range(addon_pages):
@@ -663,16 +663,17 @@ def generate_addon_coupons():
             y0 = ph - margin_top - (i + 1) * ch - i * gap
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
-            for x_base, col, qr_variant, x_h, y_h in stubs_config:
+            for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
-                qr_x = x0 + (x_base + 285) * scale
-                qr_y = y0 + ch - 224 * scale
+                qr_x = x0 + (x_base + 70) * scale
+                qr_y = y0 + (1125 - 90 - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
-                tx = x0 + (x_base + y_h + 31) * scale
-                ty = y0 + ch - (974 - x_h) * scale
+                tx = x0 + (x_base + base_y + 9) * scale
+                ty = y0 + (end_x + 18) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
+                c.setFont("Helvetica-Bold", 32 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)

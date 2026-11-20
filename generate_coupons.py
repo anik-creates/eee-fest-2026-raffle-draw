@@ -24,7 +24,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST  Cupon - 2026.png")
+TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST Cupon - 2026.png")
 QR_DIR = os.path.join(BASE_DIR, "qrcodes")
 EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
 PDF_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons_Printable.pdf")
@@ -276,7 +276,7 @@ def build_databases(codes, qr_map):
             "id": "admin_1",
             "name": "Super Admin (Anik Sarker)",
             "email": "admin@eeefest.com",
-            "password": "admin2026",
+            "password": "eeefestadmin",
             "role": "superadmin",
             "allowed_sections": ["raffle", "lunch", "tshirt"],
             "created_at": "2026-11-20 08:00:00 AM"
@@ -346,23 +346,23 @@ def build_printable_pdf(codes, qr_map):
 
     pw, ph = A4
     cw = 565.0
-    ch = cw * (975.0 / 2909.0)  # ~189.43 pt
-    scale = cw / 2909.0
+    ch = cw * (1125.0 / 3356.0)  # ~189.4 pt
+    scale = cw / 3356.0
 
     margin_top = 18.0
-    gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.05 pt between coupons
+    gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.1 pt between coupons
     x0 = (pw - cw) / 2.0  # ~15.14 pt
 
-    # Stubs info: (x_base, text_color_rgb, qr_variant, x_h, y_h)
+    # Stubs info: (x_base, text_color_rgb, qr_variant, base_y, end_x)
     stubs_config = [
-        (1060, MAROON_PDF, "maroon", 560, 277),  # Stub 1: Raffle 1
-        (1520, BLACK_PDF, "black", 575, 283),    # Stub 2: Lunch
-        (1980, MAROON_PDF, "maroon", 580, 283),  # Stub 3: Raffle 2
-        (2440, BLUE_PDF, "blue", 580, 282),      # Stub 4: T-Shirt
+        (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
+        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
+        (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
 
-    qr_sz = 100 * scale
-    c.setFont("Helvetica-Bold", 36 * scale)
+    qr_pixels = 175
+    qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
         start_idx = page_num * COUPONS_PER_PAGE
@@ -375,20 +375,21 @@ def build_printable_pdf(codes, qr_map):
             # 1. Draw base coupon template
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
-            # 2. Draw ALL 4 Stubs: QR Code beside coupon code + Inline Coupon Code
-            for x_base, col, qr_variant, x_h, y_h in stubs_config:
+            # 2. Draw ALL 4 Stubs: Prominent QR code in top blank space + Inline Coupon Code
+            for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
 
-                # QR Code beside the coupon code inside stub border
-                qr_x = x0 + (x_base + 285) * scale
-                qr_y = y0 + ch - 224 * scale
+                # Prominent QR Code in the right/top blank space of each stub inside border
+                qr_x = x0 + (x_base + 70) * scale
+                qr_y = y0 + (1125 - 90 - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
-                # Coupon Code directly inline on the exact same line as 'Cupon No:'
-                tx = x0 + (x_base + y_h + 31) * scale
-                ty = y0 + ch - (974 - x_h) * scale
+                # Coupon Code directly inline on the exact same line as 'Cupon No:' (delta = 0px)
+                tx = x0 + (x_base + base_y + 9) * scale
+                ty = y0 + (end_x + 18) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
+                c.setFont("Helvetica-Bold", 32 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)

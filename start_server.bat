@@ -31,7 +31,7 @@ echo.
 echo ======================================================================
 echo  PORTAL LAUNCH ADDRESSES:
 echo    - Local Computer: http://127.0.0.1:5000
-echo    - Default Super Admin: admin@eeefest.com / admin2026
+echo    - Default Super Admin: admin@eeefest.com / eeefestadmin
 echo ======================================================================
 echo.
 echo Launching your default browser to http://127.0.0.1:5000 in 2 seconds...
