@@ -1,13 +1,14 @@
 /**
  * EEE FEST 2026 - Master Verification & Management Portal
- * Firebase Firestore Cloud Sync + Offline Dual Runtime Engine
+ * Firebase Realtime Database (asia-southeast1) + Dual Cloud & Offline Engine
  * Zero Emojis Compliance
  */
 
-// Firebase Configuration provided by user
+// Firebase Configuration connected to live Singapore Realtime Database
 const firebaseConfig = {
   apiKey: "AIzaSyBNHhjmEDuLoClqVekVmh6sFW8JaEQbsYM",
   authDomain: "fest2026-35ba3.firebaseapp.com",
+  databaseURL: "https://fest2026-35ba3-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "fest2026-35ba3",
   storageBucket: "fest2026-35ba3.firebasestorage.app",
   messagingSenderId: "204942525316",
@@ -17,7 +18,9 @@ const firebaseConfig = {
 
 // Global App States
 let firebaseApp = null;
+let rtdb = null;
 let firestoreDb = null;
+let isRtdbConnected = false;
 let isFirestoreConnected = false;
 let isLiveApi = false;
 
@@ -48,6 +51,7 @@ let statusFilter = 'all';
 let localCoupons = [];
 let localAdmins = [];
 let localActivity = [];
+let pendingOfflineScans = [];
 
 // ========================================================
 // SOUND EFFECTS SYNTHESIZER (Web Audio API - No external mp3s needed)
@@ -135,6 +139,7 @@ const sfx = new SoundEngine();
 document.addEventListener('DOMContentLoaded', async () => {
   initFirebase();
   await initStorage();
+  initRealtimeSync();
   initAuthUI();
   initCategoryTabs();
   initSuperAdminControls();
@@ -147,7 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshStatsAndTable();
 });
 
-// Initialize Firebase SDK
+// Initialize Firebase SDK with Realtime Database (asia-southeast1)
 function initFirebase() {
   if (typeof firebase !== 'undefined') {
     try {
@@ -156,13 +161,152 @@ function initFirebase() {
       } else {
         firebaseApp = firebase.app();
       }
-      firestoreDb = firebase.firestore();
-      isFirestoreConnected = true;
-      console.log('Firebase initialized successfully.');
+
+      // 1. Primary: Firebase Realtime Database
+      if (typeof firebase.database === 'function') {
+        rtdb = firebase.database();
+        isRtdbConnected = true;
+        console.log('Firebase Realtime Database connected (asia-southeast1).');
+      }
+
+      // 2. Secondary: Firestore
+      if (typeof firebase.firestore === 'function') {
+        firestoreDb = firebase.firestore();
+        isFirestoreConnected = true;
+      }
     } catch (e) {
       console.warn('Firebase initialization note:', e);
+      isRtdbConnected = false;
       isFirestoreConnected = false;
     }
+  }
+}
+
+// Real-Time Multi-Admin Synchronization Engine & Network Monitor
+function initRealtimeSync() {
+  const offlineBanner = document.getElementById('networkOfflineBanner');
+  const statusLabel = document.getElementById('connectionStatusLabel');
+  const statusIndicator = document.querySelector('.status-indicator');
+
+  function updateNetworkStatus() {
+    const online = navigator.onLine;
+
+    if (!online) {
+      if (offlineBanner) offlineBanner.style.display = 'block';
+      if (statusLabel) {
+        statusLabel.innerText = 'OFFLINE (LOCAL CACHE ONLY)';
+        statusLabel.style.color = '#ef4444';
+      }
+      if (statusIndicator) {
+        statusIndicator.className = 'status-indicator offline';
+      }
+    } else {
+      if (offlineBanner) offlineBanner.style.display = 'none';
+      if (statusLabel) {
+        if (isRtdbConnected) {
+          statusLabel.innerText = 'REALTIME CLOUD SYNC ACTIVE';
+          statusLabel.style.color = '#10b981';
+        } else if (isLiveApi) {
+          statusLabel.innerText = 'ONLINE - FLASK API';
+          statusLabel.style.color = '#10b981';
+        } else {
+          statusLabel.innerText = 'SYSTEM ONLINE';
+          statusLabel.style.color = '#2563eb';
+        }
+      }
+      if (statusIndicator) {
+        statusIndicator.className = 'status-indicator live';
+      }
+    }
+  }
+
+  // Network event listeners
+  window.addEventListener('online', () => {
+    updateNetworkStatus();
+    showNotification('Internet connection restored. Live database synchronization resumed.');
+    syncPendingOfflineScans();
+  });
+
+  window.addEventListener('offline', () => {
+    updateNetworkStatus();
+    showNotification('Warning: No active internet connection. Offline scanning mode active.');
+  });
+
+  updateNetworkStatus();
+
+  // Firebase Realtime Database Live Listeners
+  if (rtdb) {
+    // Connection state observer
+    rtdb.ref('.info/connected').on('value', snap => {
+      const isConnected = snap.val() === true;
+      if (isConnected && navigator.onLine) {
+        if (statusLabel) {
+          statusLabel.innerText = 'REALTIME CLOUD SYNC ACTIVE';
+          statusLabel.style.color = '#10b981';
+        }
+      } else if (!navigator.onLine) {
+        updateNetworkStatus();
+      }
+    });
+
+    // 1. Live Coupon Update Listener (Child Changed: Scans by other admins)
+    rtdb.ref('coupons').on('child_changed', snap => {
+      const remoteCoupon = snap.val();
+      if (!remoteCoupon || !remoteCoupon.code) return;
+
+      const idx = localCoupons.findIndex(c => c.code === remoteCoupon.code);
+      if (idx !== -1) {
+        localCoupons[idx] = Object.assign(localCoupons[idx], remoteCoupon);
+      } else {
+        localCoupons.push(remoteCoupon);
+      }
+      localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+      refreshStatsAndTable();
+    });
+
+    // 2. Live New Coupon Listener (Child Added: Addon batch generation by super admin)
+    rtdb.ref('coupons').on('child_added', snap => {
+      const remoteCoupon = snap.val();
+      if (!remoteCoupon || !remoteCoupon.code) return;
+
+      const idx = localCoupons.findIndex(c => c.code === remoteCoupon.code);
+      if (idx === -1) {
+        localCoupons.push(remoteCoupon);
+        localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+        refreshStatsAndTable();
+      }
+    });
+
+    // 3. Live Coupon Removal Listener (Child Removed: Super Admin Reset/Delete)
+    rtdb.ref('coupons').on('child_removed', snap => {
+      const code = snap.key;
+      localCoupons = localCoupons.filter(c => c.code !== code);
+      localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+      refreshStatsAndTable();
+    });
+
+    // 4. Live Global Scanning Settings Listener
+    rtdb.ref('settings').on('value', snap => {
+      const s = snap.val();
+      if (s) {
+        settingsState = Object.assign(settingsState, s);
+        localStorage.setItem('eeefest_settings', JSON.stringify(settingsState));
+        applySettingsToUI();
+      }
+    });
+
+    // 5. Live Admin Accounts Listener
+    rtdb.ref('admins').on('value', snap => {
+      const admData = snap.val();
+      if (admData) {
+        const adminArray = Array.isArray(admData) ? admData : Object.values(admData);
+        if (adminArray.length > 0) {
+          localAdmins = adminArray;
+          localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
+          renderAdminsTable();
+        }
+      }
+    });
   }
 }
 
@@ -185,26 +329,14 @@ async function initStorage() {
     const res = await fetch('/api/stats', { cache: 'no-store' });
     if (res.ok) {
       isLiveApi = true;
-      statusLabel.innerText = 'ONLINE - FLASK & FIREBASE';
-      statusLabel.style.color = 'var(--success)';
       const data = await res.json();
       if (data.settings) settingsState = data.settings;
-      return;
     }
   } catch (err) {
     isLiveApi = false;
   }
 
-  // Client-Side / Cloud Runtime
-  if (isFirestoreConnected) {
-    statusLabel.innerText = 'ONLINE - FIREBASE CLOUD';
-    statusLabel.style.color = 'var(--primary)';
-  } else {
-    statusLabel.innerText = 'ONLINE - LOCAL RUNTIME';
-    statusLabel.style.color = 'var(--primary)';
-  }
-
-  // Seed coupons
+  // Seed coupons from localStorage or initial dataset
   const storedCoupons = localStorage.getItem('eeefest_coupons');
   if (storedCoupons) {
     localCoupons = JSON.parse(storedCoupons);
@@ -230,19 +362,74 @@ async function initStorage() {
     settingsState = JSON.parse(JSON.stringify(window.INITIAL_SETTINGS_DATA));
     localStorage.setItem('eeefest_settings', JSON.stringify(settingsState));
   }
-}
 
-// Sync changes to Firestore & local storage
-async function syncCouponToCloud(coupon) {
-  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
-
-  if (firestoreDb) {
+  // Load any pending offline scans
+  const storedPending = localStorage.getItem('eeefest_pending_scans');
+  if (storedPending) {
     try {
-      await firestoreDb.collection('coupons').doc(coupon.code).set(coupon, { merge: true });
+      pendingOfflineScans = JSON.parse(storedPending);
     } catch (e) {
-      console.warn('Firestore coupon sync note (check security rules):', e.message);
+      pendingOfflineScans = [];
     }
   }
+}
+
+// Sync coupon updates to Firebase Realtime Database & local storage
+async function syncCouponToCloud(coupon) {
+  // 1. Immediately update in-memory and local cache
+  const idx = localCoupons.findIndex(c => c.code === coupon.code);
+  if (idx !== -1) {
+    localCoupons[idx] = Object.assign(localCoupons[idx], coupon);
+  } else {
+    localCoupons.push(coupon);
+  }
+  localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+  // 2. Realtime Database (Sub-second broadcast to all active admins)
+  if (rtdb && navigator.onLine) {
+    try {
+      await rtdb.ref('coupons/' + coupon.code).set(coupon);
+      console.log('Realtime DB coupon synced:', coupon.code);
+    } catch (err) {
+      console.warn('RTDB sync note:', err);
+      queuePendingOfflineScan(coupon);
+    }
+  } else if (!navigator.onLine) {
+    queuePendingOfflineScan(coupon);
+  }
+
+  // 3. Cloud Firestore (fallback)
+  if (firestoreDb && navigator.onLine) {
+    try {
+      await firestoreDb.collection('coupons').doc(coupon.code).set(coupon, { merge: true });
+    } catch (e) {}
+  }
+}
+
+// Queue scans for offline resiliency
+function queuePendingOfflineScan(coupon) {
+  pendingOfflineScans.push(coupon);
+  localStorage.setItem('eeefest_pending_scans', JSON.stringify(pendingOfflineScans));
+}
+
+// Auto-push cached offline scans when internet reconnects
+async function syncPendingOfflineScans() {
+  if (!navigator.onLine || pendingOfflineScans.length === 0) return;
+
+  const toSync = [...pendingOfflineScans];
+  pendingOfflineScans = [];
+  localStorage.setItem('eeefest_pending_scans', JSON.stringify([]));
+
+  for (const c of toSync) {
+    if (rtdb) {
+      try {
+        await rtdb.ref('coupons/' + c.code).set(c);
+      } catch (e) {
+        pendingOfflineScans.push(c);
+      }
+    }
+  }
+  localStorage.setItem('eeefest_pending_scans', JSON.stringify(pendingOfflineScans));
 }
 
 // ========================================================
@@ -426,6 +613,9 @@ function initSuperAdminControls() {
     }
 
     localStorage.setItem('eeefest_settings', JSON.stringify(settingsState));
+    if (rtdb) {
+      try { await rtdb.ref('settings').set(settingsState); } catch (e) {}
+    }
     if (firestoreDb) {
       try {
         await firestoreDb.collection('settings').doc('global').set(settingsState, { merge: true });
@@ -497,6 +687,9 @@ function initSuperAdminControls() {
       localAdmins.push(newAdmin);
       localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
 
+      if (rtdb) {
+        try { await rtdb.ref('admins/' + newAdmin.id).set(newAdmin); } catch (e) {}
+      }
       if (firestoreDb) {
         try {
           await firestoreDb.collection('admins').doc(newAdmin.id).set(newAdmin);
@@ -566,6 +759,9 @@ window.deleteAdminAccount = async function(id, name) {
   localAdmins = localAdmins.filter(a => a.id !== id);
   localStorage.setItem('eeefest_admins', JSON.stringify(localAdmins));
 
+  if (rtdb) {
+    try { await rtdb.ref('admins/' + id).remove(); } catch (e) {}
+  }
   if (firestoreDb) {
     try { await firestoreDb.collection('admins').doc(id).delete(); } catch (e) {}
   }
@@ -1019,6 +1215,9 @@ window.deleteCouponCode = async function(code) {
   localCoupons = localCoupons.filter(c => c.code !== code);
   localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
 
+  if (rtdb) {
+    try { await rtdb.ref('coupons/' + code).remove(); } catch (e) {}
+  }
   if (firestoreDb) {
     try { await firestoreDb.collection('coupons').doc(code).delete(); } catch (e) {}
   }
@@ -1075,6 +1274,12 @@ function initAddonCouponModal() {
           if (data.success) {
             localCoupons.push(...data.new_coupons);
             localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+            if (rtdb) {
+              for (const nc of data.new_coupons) {
+                try { rtdb.ref('coupons/' + nc.code).set(nc); } catch (e) {}
+              }
+            }
             
             // Trigger PDF Download
             window.location.href = data.pdf_download_url;
@@ -1152,6 +1357,9 @@ async function generateAddonBatchClientSide(count) {
     };
     localCoupons.push(rec);
     newRecords.push(rec);
+    if (rtdb) {
+      try { await rtdb.ref('coupons/' + code).set(rec); } catch (e) {}
+    }
     if (firestoreDb) {
       try { firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
     }
@@ -1375,35 +1583,92 @@ function initExportButton() {
   if (!exportBtn) return;
 
   exportBtn.addEventListener('click', (e) => {
-    if (!isLiveApi) {
-      e.preventDefault();
-      exportOfflineCSV();
-    }
+    e.preventDefault();
+    downloadLiveExcel();
   });
 }
 
-function exportOfflineCSV() {
-  const headers = ['SL', 'Coupon Code', 'Raffle Status', 'Raffle Time', 'Raffle By', 'Lunch Status', 'Lunch Time', 'Lunch By', 'T-Shirt Status', 'T-Shirt Time', 'T-Shirt By'];
-  const rows = localCoupons.map(c => [
-    c.serial,
-    c.code,
-    c.raffle_status,
-    c.raffle_submitted_at || '',
-    c.raffle_scanned_by || '',
-    c.lunch_status,
-    c.lunch_redeemed_at || '',
-    c.lunch_scanned_by || '',
-    c.tshirt_status,
-    c.tshirt_redeemed_at || '',
-    c.tshirt_scanned_by || ''
-  ]);
+function downloadLiveExcel() {
+  if (typeof XLSX === 'undefined') {
+    // fallback: download generated Excel file
+    window.location.href = './EEE_FEST_2026_Coupons.xlsx';
+    return;
+  }
 
-  let csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.map(f => `"${String(f).replace(/"/g, '""')}"`).join(','))].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement('a');
-  link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `EEE_FEST_2026_Coupons_Master_${Date.now()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  // 1. Coupons Master Data Sheet
+  const headers = [
+    "SL No",
+    "Coupon Code",
+    "Raffle Draw Status",
+    "Raffle Scanned At",
+    "Raffle Scanned By",
+    "Lunch Status",
+    "Lunch Scanned At",
+    "Lunch Scanned By",
+    "T-Shirt Status",
+    "T-Shirt Scanned At",
+    "T-Shirt Scanned By",
+    "QR Reference"
+  ];
+
+  const rows = [headers];
+  localCoupons.forEach((c, idx) => {
+    rows.push([
+      c.serial || (idx + 1),
+      c.code,
+      c.raffle_status || "AVAILABLE",
+      c.raffle_submitted_at || "",
+      c.raffle_scanned_by || "",
+      c.lunch_status || "AVAILABLE",
+      c.lunch_redeemed_at || "",
+      c.lunch_scanned_by || "",
+      c.tshirt_status || "AVAILABLE",
+      c.tshirt_redeemed_at || "",
+      c.tshirt_scanned_by || "",
+      c.qr_file || `QR_${String(c.serial || idx + 1).padStart(4, '0')}_${c.code}_maroon.png`
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  ws['!cols'] = [
+    { wch: 8 },  // SL No
+    { wch: 15 }, // Coupon Code
+    { wch: 18 }, // Raffle Draw Status
+    { wch: 22 }, // Raffle Scanned At
+    { wch: 22 }, // Raffle Scanned By
+    { wch: 15 }, // Lunch Status
+    { wch: 22 }, // Lunch Scanned At
+    { wch: 22 }, // Lunch Scanned By
+    { wch: 15 }, // T-Shirt Status
+    { wch: 22 }, // T-Shirt Scanned At
+    { wch: 22 }, // T-Shirt Scanned By
+    { wch: 26 }  // QR Reference
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "Coupons Master");
+
+  // 2. Summary Dashboard Sheet
+  const total = localCoupons.length;
+  const raffleDone = localCoupons.filter(c => c.raffle_status === 'REDEEMED' || c.raffle_status === 'SUBMITTED').length;
+  const lunchDone = localCoupons.filter(c => c.lunch_status === 'REDEEMED').length;
+  const tshirtDone = localCoupons.filter(c => c.tshirt_status === 'REDEEMED').length;
+
+  const summaryRows = [
+    ["EEE FEST 2026 - Master Live Database Summary", ""],
+    ["Total Issued Coupons (Initial + Addons)", total],
+    ["Raffle Draw Entries Submitted", raffleDone],
+    ["Lunch & Drinks Meals Redeemed", lunchDone],
+    ["T-Shirts Distributed", tshirtDone],
+    ["Real-Time Sync Engine", "Firebase Realtime Database (asia-southeast1)"],
+    ["Export Timestamp", new Date().toLocaleString()]
+  ];
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 34 }, { wch: 28 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Live Summary");
+
+  XLSX.writeFile(wb, `EEE_FEST_2026_Coupons_Live_${Date.now()}.xlsx`);
+  showNotification("Master Excel exported successfully with all original & addon coupons.");
 }

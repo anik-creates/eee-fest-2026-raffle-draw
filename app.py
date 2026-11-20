@@ -636,6 +636,68 @@ def generate_addon_coupons():
 
     save_coupons_database()
 
+    # Append to Master Excel spreadsheet
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
+        if os.path.exists(EXCEL_PATH):
+            wb = openpyxl.load_workbook(EXCEL_PATH)
+            ws = wb.active
+            data_font = Font(name="Calibri", size=10)
+            code_font = Font(name="Consolas", size=11, bold=True, color="49252D")
+            center_align = Alignment(horizontal="center", vertical="center")
+            left_align = Alignment(horizontal="left", vertical="center")
+            thin_border = Border(
+                left=Side(style="thin", color="E0E0E0"),
+                right=Side(style="thin", color="E0E0E0"),
+                top=Side(style="thin", color="E0E0E0"),
+                bottom=Side(style="thin", color="E0E0E0")
+            )
+            alt_fill = PatternFill(start_color="FBF9F9", end_color="FBF9F9", fill_type="solid")
+            for rec in new_records:
+                row_num = ws.max_row + 1
+                ws.row_dimensions[row_num].height = 20
+                row_values = [
+                    rec["serial"],
+                    rec["code"],
+                    rec.get("raffle_status", "AVAILABLE"),
+                    rec.get("raffle_submitted_at", ""),
+                    rec.get("raffle_scanned_by", ""),
+                    rec.get("lunch_status", "AVAILABLE"),
+                    rec.get("lunch_redeemed_at", ""),
+                    rec.get("lunch_scanned_by", ""),
+                    rec.get("tshirt_status", "AVAILABLE"),
+                    rec.get("tshirt_redeemed_at", ""),
+                    rec.get("tshirt_scanned_by", ""),
+                    rec.get("qr_file", "")
+                ]
+                ws.append(row_values)
+                is_alt = (rec["serial"] % 2 == 0)
+                for c_idx in range(1, len(row_values) + 1):
+                    c = ws.cell(row=row_num, column=c_idx)
+                    c.border = thin_border
+                    if is_alt:
+                        c.fill = alt_fill
+                    if c_idx == 2:
+                        c.font = code_font
+                        c.alignment = center_align
+                    elif c_idx in [1, 3, 6, 9]:
+                        c.font = data_font
+                        c.alignment = center_align
+                    else:
+                        c.font = data_font
+                        c.alignment = left_align
+            wb.save(EXCEL_PATH)
+            # Copy to docs/
+            import shutil
+            DOCS_DIR = os.path.join(BASE_DIR, "docs")
+            os.makedirs(DOCS_DIR, exist_ok=True)
+            shutil.copy2(EXCEL_PATH, os.path.join(DOCS_DIR, "EEE_FEST_2026_Coupons.xlsx"))
+            print(f"Appended {len(new_records)} coupons to {EXCEL_PATH}")
+    except Exception as ex:
+        print(f"Note on Excel append: {ex}")
+
     # Compile Addon PDF
     TEMPLATE_IMG = os.path.join(BASE_DIR, "EEE FEST Cupon - 2026.png")
     c = canvas.Canvas(ADDON_PDF_PATH, pagesize=A4)
@@ -649,11 +711,11 @@ def generate_addon_coupons():
 
     stubs_config = [
         (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
-        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (1755, BLACK_PDF, "black", 357, 599),     # Stub 2: Lunch
         (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
-    qr_pixels = 175
+    qr_pixels = 165
     qr_sz = qr_pixels * scale
 
     addon_pages = (len(new_codes) + 3) // 4
@@ -665,8 +727,10 @@ def generate_addon_coupons():
 
             for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
-                qr_x = x0 + (x_base + 70) * scale
-                qr_y = y0 + (1125 - 90 - qr_pixels) * scale
+                qr_x_img = x_base + 265 - qr_pixels // 2
+                qr_y_img = 222 - qr_pixels // 2
+                qr_x = x0 + qr_x_img * scale
+                qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
                 tx = x0 + (x_base + base_y + 9) * scale

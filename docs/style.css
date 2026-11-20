@@ -1050,3 +1050,53 @@ input:checked + .toggle-slider:before {
     gap: 0.75rem;
   }
 }
+
+/* Persistent Network Offline Warning Banner */
+.network-offline-banner {
+  background: linear-gradient(90deg, #7f1d1d, #991b1b, #7f1d1d);
+  color: #fff;
+  border-bottom: 2px solid #ef4444;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  animation: pulseOffline 2.5s infinite ease-in-out;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.network-offline-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.offline-badge {
+  background: #dc2626;
+  border: 1px solid #fca5a5;
+  color: #fff;
+  padding: 0.25rem 0.65rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.offline-msg {
+  flex: 1;
+  line-height: 1.4;
+}
+
+@keyframes pulseOffline {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}

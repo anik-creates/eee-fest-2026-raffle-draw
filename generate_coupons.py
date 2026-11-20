@@ -356,12 +356,12 @@ def build_printable_pdf(codes, qr_map):
     # Stubs info: (x_base, text_color_rgb, qr_variant, base_y, end_x)
     stubs_config = [
         (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
-        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (1755, BLACK_PDF, "black", 357, 599),     # Stub 2: Lunch (adjusted to 357 for 0px baseline delta)
         (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
 
-    qr_pixels = 175
+    qr_pixels = 165
     qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
@@ -375,13 +375,15 @@ def build_printable_pdf(codes, qr_map):
             # 1. Draw base coupon template
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
-            # 2. Draw ALL 4 Stubs: Prominent QR code in top blank space + Inline Coupon Code
+            # 2. Draw ALL 4 Stubs: Perfectly Centered QR code in right blank space + Inline Coupon Code
             for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
 
-                # Prominent QR Code in the right/top blank space of each stub inside border
-                qr_x = x0 + (x_base + 70) * scale
-                qr_y = y0 + (1125 - 90 - qr_pixels) * scale
+                # Centered in the right blank area / stub width with zero text or border overlap
+                qr_x_img = x_base + 265 - qr_pixels // 2
+                qr_y_img = 222 - qr_pixels // 2
+                qr_x = x0 + qr_x_img * scale
+                qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
                 # Coupon Code directly inline on the exact same line as 'Cupon No:' (delta = 0px)
