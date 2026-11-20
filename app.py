@@ -537,6 +537,50 @@ def reset_coupon():
     return jsonify({"success": True, "message": f"Coupon {code} reset to AVAILABLE"})
 
 
+@app.route("/api/reset-all", methods=["POST"])
+def reset_all_coupons():
+    global coupons_list, coupons_by_code
+    for c in coupons_list:
+        c["raffle_status"] = "AVAILABLE"
+        c["raffle_submitted_at"] = ""
+        c["raffle_scanned_by"] = ""
+        c["lunch_status"] = "AVAILABLE"
+        c["lunch_redeemed_at"] = ""
+        c["lunch_scanned_by"] = ""
+        c["tshirt_status"] = "AVAILABLE"
+        c["tshirt_redeemed_at"] = ""
+        c["tshirt_scanned_by"] = ""
+
+    save_coupons_database()
+
+    # Reset Master Excel rows
+    try:
+        import openpyxl
+        EXCEL_PATH = os.path.join(BASE_DIR, "EEE_FEST_2026_Coupons.xlsx")
+        if os.path.exists(EXCEL_PATH):
+            wb = openpyxl.load_workbook(EXCEL_PATH)
+            ws = wb.active
+            for row_idx in range(2, ws.max_row + 1):
+                ws.cell(row=row_idx, column=3, value="AVAILABLE")
+                ws.cell(row=row_idx, column=4, value="")
+                ws.cell(row=row_idx, column=5, value="")
+                ws.cell(row=row_idx, column=6, value="AVAILABLE")
+                ws.cell(row=row_idx, column=7, value="")
+                ws.cell(row=row_idx, column=8, value="")
+                ws.cell(row=row_idx, column=9, value="AVAILABLE")
+                ws.cell(row=row_idx, column=10, value="")
+                ws.cell(row=row_idx, column=11, value="")
+            wb.save(EXCEL_PATH)
+            DOCS_DIR = os.path.join(BASE_DIR, "docs")
+            os.makedirs(DOCS_DIR, exist_ok=True)
+            import shutil
+            shutil.copy2(EXCEL_PATH, os.path.join(DOCS_DIR, "EEE_FEST_2026_Coupons.xlsx"))
+    except Exception as ex:
+        print(f"Excel reset error: {ex}")
+
+    return jsonify({"success": True, "message": "All coupons successfully reset to AVAILABLE."})
+
+
 @app.route("/api/coupons/<code_val>", methods=["DELETE"])
 def delete_coupon(code_val):
     global coupons_list, coupons_by_code
@@ -710,12 +754,12 @@ def generate_addon_coupons():
     x0 = (pw - cw) / 2.0
 
     stubs_config = [
-        (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
-        (1755, BLACK_PDF, "black", 357, 599),     # Stub 2: Lunch
-        (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
+        (1224, MAROON_PDF, "maroon", 394, 597),   # Stub 1: Raffle 1
+        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (2285, MAROON_PDF, "maroon", 379, 597),   # Stub 3: Raffle 2
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
-    qr_pixels = 165
+    qr_pixels = 180
     qr_sz = qr_pixels * scale
 
     addon_pages = (len(new_codes) + 3) // 4
@@ -728,16 +772,16 @@ def generate_addon_coupons():
             for x_base, col, qr_variant, base_y, end_x in stubs_config:
                 qr_file = qr_map[code][qr_variant]
                 qr_x_img = x_base + 265 - qr_pixels // 2
-                qr_y_img = 222 - qr_pixels // 2
+                qr_y_img = 210 - qr_pixels // 2
                 qr_x = x0 + qr_x_img * scale
                 qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
-                tx = x0 + (x_base + base_y + 9) * scale
-                ty = y0 + (end_x + 18) * scale
+                tx = x0 + (x_base + base_y + 1) * scale
+                ty = y0 + (end_x + 16) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
-                c.setFont("Helvetica-Bold", 32 * scale)
+                c.setFont("Helvetica-Bold", 39 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)

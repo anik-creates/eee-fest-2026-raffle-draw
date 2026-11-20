@@ -355,13 +355,13 @@ def build_printable_pdf(codes, qr_map):
 
     # Stubs info: (x_base, text_color_rgb, qr_variant, base_y, end_x)
     stubs_config = [
-        (1224, MAROON_PDF, "maroon", 395, 597),   # Stub 1: Raffle 1
-        (1755, BLACK_PDF, "black", 357, 599),     # Stub 2: Lunch (adjusted to 357 for 0px baseline delta)
-        (2285, MAROON_PDF, "maroon", 380, 597),   # Stub 3: Raffle 2
+        (1224, MAROON_PDF, "maroon", 394, 597),   # Stub 1: Raffle 1
+        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
+        (2285, MAROON_PDF, "maroon", 379, 597),   # Stub 3: Raffle 2
         (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
     ]
 
-    qr_pixels = 165
+    qr_pixels = 180
     qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
@@ -381,17 +381,17 @@ def build_printable_pdf(codes, qr_map):
 
                 # Centered in the right blank area / stub width with zero text or border overlap
                 qr_x_img = x_base + 265 - qr_pixels // 2
-                qr_y_img = 222 - qr_pixels // 2
+                qr_y_img = 210 - qr_pixels // 2
                 qr_x = x0 + qr_x_img * scale
                 qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
                 # Coupon Code directly inline on the exact same line as 'Cupon No:' (delta = 0px)
-                tx = x0 + (x_base + base_y + 9) * scale
-                ty = y0 + (end_x + 18) * scale
+                tx = x0 + (x_base + base_y + 1) * scale
+                ty = y0 + (end_x + 16) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
-                c.setFont("Helvetica-Bold", 32 * scale)
+                c.setFont("Helvetica-Bold", 39 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)

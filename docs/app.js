@@ -718,6 +718,94 @@ function initSuperAdminControls() {
       sfx.playSuccess();
     });
   }
+
+  // Super Admin: Reset All Coupons button
+  const resetAllBtn = document.getElementById('resetAllCouponsBtn');
+  if (resetAllBtn) {
+    resetAllBtn.addEventListener('click', async () => {
+      const confirmed = confirm("Are you sure you want to RESET ALL coupons back to AVAILABLE?\n\nThis will clear all scan records (Raffle, Lunch, T-Shirt) across the entire event so you can re-test or restart without duplicate errors.");
+      if (!confirmed) return;
+
+      resetAllBtn.disabled = true;
+      resetAllBtn.innerText = "Resetting All Coupons...";
+
+      try {
+        localCoupons.forEach(c => {
+          c.raffle_status = 'AVAILABLE';
+          c.raffle_submitted_at = '';
+          c.raffle_scanned_by = '';
+          c.lunch_status = 'AVAILABLE';
+          c.lunch_redeemed_at = '';
+          c.lunch_scanned_by = '';
+          c.tshirt_status = 'AVAILABLE';
+          c.tshirt_redeemed_at = '';
+          c.tshirt_scanned_by = '';
+        });
+
+        localStorage.setItem('eeefest_coupons', JSON.stringify(localCoupons));
+
+        // Realtime database bulk update
+        if (rtdb) {
+          const updates = {};
+          localCoupons.forEach(c => {
+            updates[`coupons/${c.code}/raffle_status`] = 'AVAILABLE';
+            updates[`coupons/${c.code}/raffle_submitted_at`] = '';
+            updates[`coupons/${c.code}/raffle_scanned_by`] = '';
+            updates[`coupons/${c.code}/lunch_status`] = 'AVAILABLE';
+            updates[`coupons/${c.code}/lunch_redeemed_at`] = '';
+            updates[`coupons/${c.code}/lunch_scanned_by`] = '';
+            updates[`coupons/${c.code}/tshirt_status`] = 'AVAILABLE';
+            updates[`coupons/${c.code}/tshirt_redeemed_at`] = '';
+            updates[`coupons/${c.code}/tshirt_scanned_by`] = '';
+          });
+          await rtdb.ref().update(updates);
+        }
+
+        // Secondary Firestore update if connected
+        if (firestoreDb) {
+          try {
+            const batch = firestoreDb.batch();
+            localCoupons.slice(0, 450).forEach(c => {
+              const ref = firestoreDb.collection('coupons').doc(c.code);
+              batch.set(ref, {
+                raffle_status: 'AVAILABLE',
+                raffle_submitted_at: '',
+                raffle_scanned_by: '',
+                lunch_status: 'AVAILABLE',
+                lunch_redeemed_at: '',
+                lunch_scanned_by: '',
+                tshirt_status: 'AVAILABLE',
+                tshirt_redeemed_at: '',
+                tshirt_scanned_by: ''
+              }, { merge: true });
+            });
+            await batch.commit();
+          } catch (e) {}
+        }
+
+        // Flask API if running
+        if (isLiveApi) {
+          try {
+            await fetch('/api/reset-all', { method: 'POST' });
+          } catch (e) {}
+        }
+
+        resetResultBox();
+        refreshStatsAndTable();
+        sfx.playSuccess();
+        alert("Success: All coupons have been reset to AVAILABLE. All booth statuses are cleared.");
+      } catch (err) {
+        console.error("Reset all error:", err);
+        alert("Error resetting coupons: " + err.message);
+      } finally {
+        resetAllBtn.disabled = false;
+        resetAllBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>
+          Reset All Coupons
+        `;
+      }
+    });
+  }
 }
 
 async function loadAdminsTable() {
