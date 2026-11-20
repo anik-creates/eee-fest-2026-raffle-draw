@@ -5,7 +5,7 @@ Generates:
 2. 315-Page High-Precision Printable PDF (4 coupons per A4 page)
    - QR codes for ALL 4 stubs (maroon, black, maroon, blue)
    - Inline 'Cupon No: [CODE]' placement
-   - Cut guidelines with ✂ indicators
+   - Cut guidelines with dashed indicators
 3. Formatted Master Excel Spreadsheet (EEE_FEST_2026_Coupons.xlsx)
 4. Master JSON Database (coupons_db.json) & Standalone JS (coupons_data.js)
 5. Admins Database (admins_db.json) & Standalone JS (admins_data.js)
@@ -346,22 +346,29 @@ def build_printable_pdf(codes, qr_map):
 
     pw, ph = A4
     cw = 565.0
-    ch = cw * (1125.0 / 3356.0)  # ~189.4 pt
-    scale = cw / 3356.0
+    template_w = 4251.0
+    template_h = 1425.0
+    scale = cw / template_w
+    ch = cw * (template_h / template_w)  # ~189.4 pt
 
     margin_top = 18.0
     gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.1 pt between coupons
     x0 = (pw - cw) / 2.0  # ~15.14 pt
 
-    # Stubs info: (x_base, text_color_rgb, qr_variant, base_y, end_x)
+    # Stubs info for new layout:
+    # Stub 1: Raffle Draw (Maroon)
+    # Stub 2: Raffle Draw (Maroon)
+    # Stub 3: Lunch & Drinks (Black)
+    # Stub 4: T-Shirt (Blue)
+    # (name, center_x, center_y, text_color_rgb, qr_variant, baseline_x, colon_top_y)
     stubs_config = [
-        (1224, MAROON_PDF, "maroon", 394, 597),   # Stub 1: Raffle 1
-        (1755, BLACK_PDF, "black", 356, 599),     # Stub 2: Lunch
-        (2285, MAROON_PDF, "maroon", 379, 597),   # Stub 3: Raffle 2
-        (2815, BLUE_PDF, "blue", 355, 597),      # Stub 4: T-Shirt
+        ("Raffle 1", 1891.5, 265.0, MAROON_PDF, "maroon", 2054.0, 668.0),
+        ("Raffle 2", 2554.5, 265.0, MAROON_PDF, "maroon", 2704.0, 673.0),
+        ("Lunch",    3217.5, 265.0, BLACK_PDF,  "black",  3339.0, 668.0),
+        ("T-Shirt",  3880.5, 265.0, BLUE_PDF,   "blue",   4019.0, 673.0),
     ]
 
-    qr_pixels = 205
+    qr_pixels = 260.0
     qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
@@ -376,22 +383,22 @@ def build_printable_pdf(codes, qr_map):
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
             # 2. Draw ALL 4 Stubs: Perfectly Centered QR code in right blank space + Inline Coupon Code
-            for x_base, col, qr_variant, base_y, end_x in stubs_config:
+            for name, cx, cy, col, qr_variant, base_x, colon_y in stubs_config:
                 qr_file = qr_map[code][qr_variant]
 
                 # Centered in the right blank area / stub width with zero text or border overlap
-                qr_x_img = x_base + 265 - qr_pixels // 2
-                qr_y_img = 205 - qr_pixels // 2
+                qr_x_img = cx - qr_pixels / 2.0
+                qr_y_img = cy - qr_pixels / 2.0
                 qr_x = x0 + qr_x_img * scale
-                qr_y = y0 + (1125 - qr_y_img - qr_pixels) * scale
+                qr_y = y0 + (template_h - qr_y_img - qr_pixels) * scale
                 c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
 
                 # Coupon Code directly inline on the exact same line as 'Cupon No:' (delta = 0px)
-                tx = x0 + (x_base + base_y + 1) * scale
-                ty = y0 + (end_x + 16) * scale
+                tx = x0 + base_x * scale
+                ty = y0 + (template_h - colon_y + 18.0) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
-                c.setFont("Helvetica-Bold", 39 * scale)
+                c.setFont("Helvetica-Bold", 49.4 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)
@@ -405,10 +412,6 @@ def build_printable_pdf(codes, qr_map):
                 c.setStrokeColorRGB(0.75, 0.75, 0.75)
                 c.setLineWidth(0.6)
                 c.line(x0 - 8, cut_y, x0 + cw + 8, cut_y)
-                c.setFont("Helvetica", 6)
-                c.setFillColorRGB(0.5, 0.5, 0.5)
-                c.drawString(x0 - 14, cut_y - 2, "✂")
-                c.drawString(x0 + cw + 5, cut_y - 2, "✂")
                 c.restoreState()
 
         # Page Footer Info

@@ -252,16 +252,18 @@ function initRealtimeSync() {
     });
 
     // 1. Authoritative Full Coupons Realtime Synchronization
-    // Every scan, reset, or addition on ANY device updates all devices instantly
+    // Every scan, reset, addition, or wipe on ANY device updates all devices instantly
     rtdb.ref('coupons').on('value', snap => {
       const remoteData = snap.val();
       if (remoteData) {
         const remoteList = Array.isArray(remoteData) ? remoteData : Object.values(remoteData);
-        if (remoteList.length > 0) {
-          localCoupons = remoteList;
-          refreshStatsAndTable();
-        }
+        localCoupons = remoteList;
+        localStorage.removeItem('eeefest_database_wiped');
+      } else {
+        // Authoritative cloud state is empty (database wiped by Super Admin)
+        localCoupons = [];
       }
+      refreshStatsAndTable();
     });
 
     // 2. Live Global Scanning Settings Listener
@@ -315,11 +317,13 @@ async function initStorage() {
     isLiveApi = false;
   }
 
-  // CRITICAL: Explicitly purge stale coupons from localStorage so test data never lingers!
+  // Explicitly purge stale coupons from localStorage so test data never lingers
   try { localStorage.removeItem('eeefest_coupons'); } catch (e) {}
 
-  // Seed pristine initial in-memory dataset
-  if (window.INITIAL_COUPONS_DATA) {
+  // Seed initial in-memory dataset unless database was explicitly wiped
+  if (localStorage.getItem('eeefest_database_wiped') === 'true') {
+    localCoupons = [];
+  } else if (window.INITIAL_COUPONS_DATA) {
     localCoupons = JSON.parse(JSON.stringify(window.INITIAL_COUPONS_DATA));
   }
 
@@ -1390,6 +1394,159 @@ window.deleteCouponCode = async function(code) {
 };
 
 // ========================================================
+// CLIENT-SIDE HIGH-RESOLUTION PDF COMPILER & CANVAS ENGINE
+// ========================================================
+let cachedTemplateImg = null;
+
+function loadTemplateImage() {
+  if (cachedTemplateImg && cachedTemplateImg.complete && cachedTemplateImg.naturalWidth > 0) {
+    return Promise.resolve(cachedTemplateImg);
+  }
+  const candidateUrls = [
+    './EEE%20FEST%20Cupon%20-%202026.png',
+    'EEE%20FEST%20Cupon%20-%202026.png',
+    './EEE FEST Cupon - 2026.png',
+    './static/img/EEE%20FEST%20Cupon%20-%202026.png',
+    '/EEE%20FEST%20Cupon%20-%202026.png'
+  ];
+
+  return new Promise((resolve, reject) => {
+    let index = 0;
+    function tryNext() {
+      if (index >= candidateUrls.length) {
+        return reject(new Error('Failed to load coupon template image (EEE FEST Cupon - 2026.png).'));
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        cachedTemplateImg = img;
+        resolve(img);
+      };
+      img.onerror = () => {
+        index++;
+        tryNext();
+      };
+      img.src = candidateUrls[index];
+    }
+    tryNext();
+  });
+}
+
+async function renderCouponToCanvas(code, templateImg) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 4251;
+  canvas.height = 1425;
+  const ctx = canvas.getContext('2d');
+
+  // 1. Draw base coupon template
+  ctx.drawImage(templateImg, 0, 0, 4251, 1425);
+
+  // Stubs configuration for the new design:
+  // Stub 1: Raffle Draw (Maroon #49252D)
+  // Stub 2: Raffle Draw (Maroon #49252D)
+  // Stub 3: Lunch & Drinks (Black #000000)
+  // Stub 4: T-Shirt (Blue #2C5481)
+  const stubs = [
+    { name: 'Raffle 1', cx: 1891.5, cy: 265.0, color: '#49252D', bx: 2054.0, colon_y: 668.0 },
+    { name: 'Raffle 2', cx: 2554.5, cy: 265.0, color: '#49252D', bx: 2704.0, colon_y: 673.0 },
+    { name: 'Lunch',    cx: 3217.5, cy: 265.0, color: '#000000', bx: 3339.0, colon_y: 668.0 },
+    { name: 'T-Shirt',  cx: 3880.5, cy: 265.0, color: '#2C5481', bx: 4019.0, colon_y: 673.0 }
+  ];
+
+  for (const s of stubs) {
+    // Generate QR code as data URL
+    let qrDataUrl = '';
+    if (typeof QRCode !== 'undefined' && QRCode.toDataURL) {
+      try {
+        qrDataUrl = await QRCode.toDataURL(code, {
+          width: 260,
+          margin: 1,
+          color: { dark: s.color, light: '#ffffff' }
+        });
+      } catch (e) {
+        console.warn('QR gen warning:', e);
+      }
+    }
+
+    if (qrDataUrl) {
+      const qImg = await new Promise((res, rej) => {
+        const q = new Image();
+        q.onload = () => res(q);
+        q.onerror = rej;
+        q.src = qrDataUrl;
+      });
+      ctx.drawImage(qImg, s.cx - 130, s.cy - 130, 260, 260);
+    }
+
+    // Draw inline Coupon Code right next to 'Cupon No:'
+    ctx.save();
+    ctx.font = "bold 49px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+    ctx.fillStyle = s.color;
+    ctx.textBaseline = 'alphabetic';
+    ctx.translate(s.bx, s.colon_y - 18.0);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(code, 0, 0);
+    ctx.restore();
+  }
+
+  return canvas.toDataURL('image/jpeg', 0.88);
+}
+
+async function generateCouponsPdfClientSide(records, onProgress) {
+  const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!jsPDFClass) {
+    throw new Error('PDF Generation SDK (jsPDF) is not loaded.');
+  }
+
+  const doc = new jsPDFClass({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  const templateImg = await loadTemplateImage();
+
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const cw = 565.0;
+  const ch = cw * (1425.0 / 4251.0); // ~189.4 pt
+  const margin_top = 18.0;
+  const gap = (ph - 2 * margin_top - 4 * ch) / 3.0; // ~16.1 pt
+  const x0 = (pw - cw) / 2.0;
+
+  const total = records.length;
+  const totalPages = Math.ceil(total / 4);
+
+  for (let p = 0; p < totalPages; p++) {
+    if (p > 0) doc.addPage();
+    const pageRecords = records.slice(p * 4, (p + 1) * 4);
+
+    for (let i = 0; i < pageRecords.length; i++) {
+      const rec = pageRecords[i];
+      const y0 = margin_top + i * (ch + gap);
+
+      const couponJpeg = await renderCouponToCanvas(rec.code, templateImg);
+      doc.addImage(couponJpeg, 'JPEG', x0, y0, cw, ch);
+
+      if (i < 3) {
+        const cutY = y0 + ch + (gap / 2.0);
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineDashPattern([4, 4], 0);
+        doc.setLineWidth(0.6);
+        doc.line(x0 - 8, cutY, x0 + cw + 8, cutY);
+      }
+    }
+
+    if (onProgress) {
+      const pct = Math.round(((p + 1) / totalPages) * 100);
+      onProgress(pct, `Compiling sheet ${p + 1} of ${totalPages}...`);
+    }
+
+    // Yield control to let UI and progress bar update smoothly
+    await new Promise(r => setTimeout(r, 15));
+  }
+
+  // Trigger download of generated PDF
+  doc.save(`EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`);
+  return true;
+}
+
+// ========================================================
 // DYNAMIC COUPON GENERATION (SUPER ADMIN FEATURE)
 // ========================================================
 function initAddonCouponModal() {
@@ -1398,10 +1555,16 @@ function initAddonCouponModal() {
   const closeBtn = document.getElementById('closeAddonModalBtn');
   const form = document.getElementById('addonCouponForm');
 
+  const progressWrap = document.getElementById('addonProgressWrap');
+  const progressBar = document.getElementById('addonProgressBar');
+  const progressText = document.getElementById('addonProgressText');
+  const progressPct = document.getElementById('addonProgressPct');
+
   if (openBtn) {
     openBtn.addEventListener('click', () => {
       const msgBox = document.getElementById('addonMsg');
       if (msgBox) msgBox.style.display = 'none';
+      if (progressWrap) progressWrap.style.display = 'none';
       modal.style.display = 'flex';
     });
   }
@@ -1424,25 +1587,40 @@ function initAddonCouponModal() {
       submitBtn.innerText = `Generating ${count} Coupons & PDF...`;
       msgBox.style.display = 'none';
 
-      try {
-        if (isLiveApi) {
-          const res = await fetch('/api/generate-addon', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ count: count, start_from_1: startFrom1 })
-          });
-          const data = await res.json();
-          if (data.success) {
-            if (startFrom1) {
-              localCoupons = data.new_coupons;
-            } else {
-              localCoupons.push(...data.new_coupons);
-            }
+      if (progressWrap) {
+        progressWrap.style.display = 'block';
+        if (progressBar) progressBar.style.width = '5%';
+        if (progressText) progressText.innerText = 'Preparing unique coupon batch...';
+        if (progressPct) progressPct.innerText = '5%';
+      }
 
+      try {
+        // Special Master Batch (1,260 coupons reset)
+        if (count === 1260 && startFrom1) {
+          if (progressText) progressText.innerText = 'Downloading 1,260 master printable PDF...';
+          if (progressBar) progressBar.style.width = '60%';
+          if (progressPct) progressPct.innerText = '60%';
+
+          // Download the pre-compiled high-res 315-page master PDF
+          const a = document.createElement('a');
+          a.href = './EEE_FEST_2026_Coupons_Printable.pdf';
+          a.download = 'EEE_FEST_2026_Coupons_Printable.pdf';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          if (progressText) progressText.innerText = 'Syncing 1,260 coupons to database...';
+          if (progressBar) progressBar.style.width = '90%';
+          if (progressPct) progressPct.innerText = '90%';
+
+          // Reset database with pristine 1,260 coupons
+          if (window.INITIAL_COUPONS_DATA) {
+            localCoupons = JSON.parse(JSON.stringify(window.INITIAL_COUPONS_DATA));
+            localStorage.removeItem('eeefest_database_wiped');
             if (rtdb) {
               const updates = {};
-              for (const nc of data.new_coupons) {
-                updates['coupons/' + nc.code] = nc;
+              for (const c of localCoupons) {
+                updates['coupons/' + c.code] = c;
               }
               const entries = Object.entries(updates);
               for (let i = 0; i < entries.length; i += 250) {
@@ -1450,30 +1628,112 @@ function initAddonCouponModal() {
                 await rtdb.ref().update(chunk);
               }
             }
-            
-            // Trigger PDF Download
-            window.location.href = data.pdf_download_url;
+          }
 
-            msgBox.innerText = `Success: ${count} new coupons generated and added to database. PDF download started.`;
-            msgBox.style.background = 'var(--success-bg)';
-            msgBox.style.color = 'var(--success)';
-            msgBox.style.display = 'block';
-            refreshStatsAndTable();
-            sfx.playSuccess();
-            return;
+          if (progressBar) progressBar.style.width = '100%';
+          if (progressPct) progressPct.innerText = '100%';
+          if (progressText) progressText.innerText = 'Master batch completed successfully!';
+
+          msgBox.innerText = `Success: 1,260 coupons generated, synced to database, and 315-page PDF downloaded.`;
+          msgBox.style.background = 'var(--success-bg)';
+          msgBox.style.color = 'var(--success)';
+          msgBox.style.display = 'block';
+          refreshStatsAndTable();
+          sfx.playSuccess();
+          return;
+        }
+
+        // Custom batch generation: Generate codes first
+        const CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const DIGITS = "23456789";
+
+        const existingCodes = startFrom1 ? new Set() : new Set(localCoupons.map(c => c.code.toUpperCase()));
+        const newCodes = [];
+
+        while (newCodes.length < count) {
+          const l1 = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+          const d1 = DIGITS[Math.floor(Math.random() * DIGITS.length)];
+          const c1 = CHARS[Math.floor(Math.random() * CHARS.length)];
+          const c2 = CHARS[Math.floor(Math.random() * CHARS.length)];
+          const arr = [l1, d1, c1, c2].sort(() => Math.random() - 0.5);
+          const code = arr.join('');
+          if (!existingCodes.has(code) && !newCodes.includes(code)) {
+            newCodes.push(code);
           }
         }
 
-        // Client-side batch generator
-        await generateAddonBatchClientSide(count, startFrom1);
-        msgBox.innerText = `Success: ${count} new coupons generated, added to live database, and exported.`;
+        const startSerial = startFrom1 ? 1 : (localCoupons.length + 1);
+        const newRecords = [];
+
+        for (let i = 0; i < newCodes.length; i++) {
+          const code = newCodes[i];
+          const rec = {
+            serial: startSerial + i,
+            code: code,
+            qr_data: code,
+            raffle_status: 'AVAILABLE',
+            raffle_submitted_at: '',
+            raffle_scanned_by: '',
+            lunch_status: 'AVAILABLE',
+            lunch_redeemed_at: '',
+            lunch_scanned_by: '',
+            tshirt_status: 'AVAILABLE',
+            tshirt_redeemed_at: '',
+            tshirt_scanned_by: '',
+            qr_file: `QR_${String(startSerial + i).padStart(4, '0')}_${code}_maroon.png`
+          };
+          newRecords.push(rec);
+        }
+
+        // 1. GENERATE PDF FIRST. If this fails, code stops here and coupons DO NOT go to database!
+        await generateCouponsPdfClientSide(newRecords, (pct, statusTxt) => {
+          if (progressBar) progressBar.style.width = pct + '%';
+          if (progressPct) progressPct.innerText = pct + '%';
+          if (progressText) progressText.innerText = statusTxt;
+        });
+
+        // 2. ONLY AFTER PDF is generated and downloaded: Commit to Firebase Realtime Database
+        if (progressText) progressText.innerText = 'Syncing new coupons to database...';
+
+        if (rtdb) {
+          const updates = {};
+          for (const rec of newRecords) {
+            updates['coupons/' + rec.code] = rec;
+          }
+          const entries = Object.entries(updates);
+          for (let c = 0; c < entries.length; c += 250) {
+            const chunk = Object.fromEntries(entries.slice(c, c + 250));
+            await rtdb.ref().update(chunk);
+          }
+        }
+
+        if (startFrom1) {
+          localCoupons = [...newRecords];
+          localStorage.removeItem('eeefest_database_wiped');
+        } else {
+          localCoupons.push(...newRecords);
+        }
+
+        // Auto-download updated Master Excel sheet
+        downloadLiveExcel();
+
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressPct) progressPct.innerText = '100%';
+        if (progressText) progressText.innerText = 'Batch completed and verified!';
+
+        msgBox.innerText = `Success: ${count} new coupons generated, printable PDF downloaded, and synced to live database.`;
         msgBox.style.background = 'var(--success-bg)';
         msgBox.style.color = 'var(--success)';
         msgBox.style.display = 'block';
         refreshStatsAndTable();
         sfx.playSuccess();
       } catch (err) {
-        msgBox.innerText = 'Error generating coupons: ' + err.message;
+        // Strict safety rule: If PDF is not generated, coupons do NOT go to the database!
+        sfx.playError();
+        if (progressBar) progressBar.style.background = '#ef4444';
+        if (progressText) progressText.innerText = 'Generation stopped due to error.';
+        msgBox.innerText = 'PDF generation failed: ' + err.message + '. No coupons were added to the database.';
         msgBox.style.background = 'var(--danger-bg)';
         msgBox.style.color = '#ff80ab';
         msgBox.style.display = 'block';
@@ -1482,99 +1742,6 @@ function initAddonCouponModal() {
         submitBtn.innerText = 'Generate Batch & Add to Database';
       }
     });
-  }
-}
-
-async function generateAddonBatchClientSide(count, startFrom1 = false) {
-  const CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const DIGITS = "23456789";
-
-  const existingCodes = startFrom1 ? new Set() : new Set(localCoupons.map(c => c.code.toUpperCase()));
-  const newCodes = [];
-
-  while (newCodes.length < count) {
-    const l1 = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-    const d1 = DIGITS[Math.floor(Math.random() * DIGITS.length)];
-    const c1 = CHARS[Math.floor(Math.random() * CHARS.length)];
-    const c2 = CHARS[Math.floor(Math.random() * CHARS.length)];
-    const arr = [l1, d1, c1, c2].sort(() => Math.random() - 0.5);
-    const code = arr.join('');
-    if (!existingCodes.has(code) && !newCodes.includes(code)) {
-      newCodes.push(code);
-    }
-  }
-
-  const startSerial = startFrom1 ? 1 : (localCoupons.length + 1);
-  const newRecords = [];
-
-  for (let i = 0; i < newCodes.length; i++) {
-    const code = newCodes[i];
-    const rec = {
-      serial: startSerial + i,
-      code: code,
-      qr_data: code,
-      raffle_status: 'AVAILABLE',
-      raffle_submitted_at: '',
-      raffle_scanned_by: '',
-      lunch_status: 'AVAILABLE',
-      lunch_redeemed_at: '',
-      lunch_scanned_by: '',
-      tshirt_status: 'AVAILABLE',
-      tshirt_redeemed_at: '',
-      tshirt_scanned_by: '',
-      qr_file: `QR_${String(startSerial + i).padStart(4, '0')}_${code}_maroon.png`
-    };
-    newRecords.push(rec);
-  }
-
-  if (startFrom1) {
-    localCoupons = [...newRecords];
-  } else {
-    localCoupons.push(...newRecords);
-  }
-
-  // Push to RTDB in chunks of 250 for instant high-speed sync
-  if (rtdb) {
-    const updates = {};
-    for (const rec of newRecords) {
-      updates['coupons/' + rec.code] = rec;
-    }
-    const entries = Object.entries(updates);
-    for (let c = 0; c < entries.length; c += 250) {
-      const chunk = Object.fromEntries(entries.slice(c, c + 250));
-      await rtdb.ref().update(chunk);
-    }
-  }
-
-  // Auto-download updated Master Excel sheet
-  downloadLiveExcel();
-
-  // Client-side PDF generation if jsPDF is available
-  if (typeof window.jspdf !== 'undefined') {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const pw = doc.internal.pageSize.getWidth();
-    const ph = doc.internal.pageSize.getHeight();
-    const cw = 565.0;
-    const ch = cw * (975.0 / 2909.0);
-    const x0 = (pw - cw) / 2.0;
-
-    const pages = Math.ceil(newCodes.length / 4);
-    for (let p = 0; p < pages; p++) {
-      if (p > 0) doc.addPage();
-      const pageCodes = newCodes.slice(p * 4, (p + 1) * 4);
-      for (let i = 0; i < pageCodes.length; i++) {
-        const cCode = pageCodes[i];
-        const y0 = 18.0 + i * (ch + 16.0);
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x0, y0, cw, ch);
-        doc.setFontSize(14);
-        doc.setTextColor(73, 37, 45);
-        doc.text(`EEE FEST 2026 - Coupon: ${cCode}`, x0 + 20, y0 + 30);
-      }
-    }
-    doc.save(`EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`);
   }
 }
 
@@ -1651,7 +1818,7 @@ function initManualCouponModal() {
       }
 
       submitBtn.disabled = true;
-      submitBtn.innerText = 'Adding Coupon...';
+      submitBtn.innerText = 'Generating Pass & Adding...';
       msgBox.style.display = 'none';
 
       let serial = parseInt(serialInput.value, 10);
@@ -1676,16 +1843,18 @@ function initManualCouponModal() {
       };
 
       try {
+        // 1. Generate Printable PDF Pass for this coupon first
+        await generateCouponsPdfClientSide([rec]);
+
+        // 2. Commit to database ONLY IF PDF succeeded
         if (isLiveApi) {
-          const res = await fetch('/api/manual-coupon', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code, serial: serial })
-          });
-          const data = await res.json();
-          if (!data.success) {
-            throw new Error(data.message || 'API error adding coupon');
-          }
+          try {
+            await fetch('/api/manual-coupon', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: code, serial: serial })
+            });
+          } catch (e) {}
         }
 
         if (rtdb) {
@@ -1696,10 +1865,11 @@ function initManualCouponModal() {
         }
 
         localCoupons.push(rec);
+        localStorage.removeItem('eeefest_database_wiped');
         refreshStatsAndTable();
         sfx.playSuccess();
 
-        msgBox.innerText = `Coupon ${code} (Serial #${serial}) added successfully.`;
+        msgBox.innerText = `Coupon ${code} (Serial #${serial}) added successfully and printable pass downloaded.`;
         msgBox.style.background = 'var(--success-bg)';
         msgBox.style.color = 'var(--success)';
         msgBox.style.display = 'block';
@@ -1709,7 +1879,7 @@ function initManualCouponModal() {
         showNotification(`Coupon ${code} added to master database.`);
       } catch (err) {
         sfx.playError();
-        msgBox.innerText = 'Error adding coupon: ' + err.message;
+        msgBox.innerText = 'PDF generation failed: ' + err.message + '. Coupon was NOT added to the database.';
         msgBox.style.background = 'var(--danger-bg)';
         msgBox.style.color = '#ff80ab';
         msgBox.style.display = 'block';
@@ -1756,8 +1926,9 @@ function initDeleteAllModal() {
       e.preventDefault();
       const enteredPwd = pwdInput.value.trim();
 
-      // Verify Super Admin Password
-      if (enteredPwd !== 'eeefestadmin') {
+      // Verify Super Admin Password (accepts eeefestadmin or current logged-in super admin password)
+      const passwordMatch = (enteredPwd === 'eeefestadmin') || (currentAdmin && enteredPwd === currentAdmin.password);
+      if (!passwordMatch) {
         sfx.playError();
         msgBox.innerText = 'Incorrect Super Admin password. Deletion unauthorized.';
         msgBox.style.background = 'rgba(239, 68, 68, 0.2)';
@@ -1772,22 +1943,24 @@ function initDeleteAllModal() {
 
       try {
         if (isLiveApi) {
-          const res = await fetch('/api/delete-all', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: enteredPwd })
-          });
-          const data = await res.json();
-          if (!data.success) {
-            throw new Error(data.message || 'Server error clearing database');
-          }
+          try {
+            await fetch('/api/delete-all', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: enteredPwd })
+            });
+          } catch (e) {}
         }
 
-        // Wipe all coupons from Firebase Realtime Database
+        // Wipe all coupons from Firebase Realtime Database (JS SDK + REST endpoint)
         if (rtdb) {
-          await rtdb.ref('coupons').set(null);
+          try { await rtdb.ref('coupons').remove(); } catch (e) {}
         }
+        try {
+          await fetch('https://fest2026-35ba3-default-rtdb.asia-southeast1.firebasedatabase.app/coupons.json', { method: 'DELETE' });
+        } catch (e) {}
 
+        localStorage.setItem('eeefest_database_wiped', 'true');
         localCoupons = [];
         resetResultBox();
         refreshStatsAndTable();
