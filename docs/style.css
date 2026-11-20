@@ -1369,3 +1369,150 @@ input:checked + .toggle-slider:before {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.9; }
 }
+
+/* Floating Toast Notifications */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 90vw;
+  pointer-events: none;
+}
+
+.toast-item {
+  background: #181926;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  border-left: 4px solid var(--primary);
+  max-width: 380px;
+  word-break: break-word;
+}
+
+.toast-item.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-item.toast-success {
+  border-left-color: #10b981;
+}
+
+.toast-item.toast-danger, .toast-item.toast-error {
+  border-left-color: #ef4444;
+}
+
+.toast-item.toast-warning {
+  border-left-color: #f59e0b;
+}
+
+/* Scanner Authentication Gate */
+.scanner-card {
+  position: relative;
+}
+
+.scanner-auth-gate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 17, 23, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 40;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.auth-gate-box {
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-gate-box svg {
+  color: var(--primary);
+  filter: drop-shadow(0 0 12px rgba(107, 70, 193, 0.4));
+}
+
+.auth-gate-box h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.auth-gate-box p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.auth-gate-box .btn {
+  margin-top: 0.5rem;
+  width: 100%;
+  min-height: 42px;
+}
+
+/* Table Selection Action Bar */
+.coupon-select-checkbox {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--primary);
+  vertical-align: middle;
+}
+
+.selected-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  background: rgba(107, 70, 193, 0.15);
+  border: 1px solid rgba(107, 70, 193, 0.35);
+  border-radius: 6px;
+  margin-top: 0.65rem;
+  font-size: 0.84rem;
+  color: #e2e8f0;
+}
+
+@media (max-width: 768px) {
+  .toast-container {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    align-items: center;
+  }
+  .toast-item {
+    max-width: 100%;
+    width: 100%;
+    text-align: center;
+  }
+  .selected-actions-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+}
+}

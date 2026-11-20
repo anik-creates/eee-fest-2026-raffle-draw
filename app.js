@@ -41,17 +41,48 @@ let availableCameras = [];
 let lastScannedCode = null;
 let lastScanTime = 0;
 
-// Table Pagination State
+// Table Pagination & Filter State
 let currentPage = 1;
 const itemsPerPage = 25;
 let searchQuery = '';
 let statusFilter = 'all';
+let createdBatchFilter = 'all';
+let selectedCouponCodes = new Set();
 
 // In-Memory Storage
 let localCoupons = [];
 let localAdmins = [];
 let localActivity = [];
 let pendingOfflineScans = [];
+
+// ========================================================
+// FLOATING NOTIFICATION / TOAST ENGINE
+// ========================================================
+function showNotification(msg, type = 'info', duration = 3200) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast-item toast-${type}`;
+  toast.innerText = msg;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add('show');
+  });
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 300);
+  }, duration);
+}
+window.showNotification = showNotification;
 
 // ========================================================
 // SOUND EFFECTS SYNTHESIZER (Web Audio API - No external mp3s needed)
@@ -519,12 +550,22 @@ function renderAuthNavbar() {
   const authNav = document.getElementById('authNavContainer');
   const superDeck = document.getElementById('superAdminDeck');
   const authNotice = document.getElementById('authRequiredNotice');
+  const authGate = document.getElementById('scannerAuthGate');
   const tableSection = document.getElementById('masterTableSection');
+  const manualInput = document.getElementById('manualCouponInput');
+  const manualBtn = document.getElementById('submitManualBtn');
 
   if (!currentAdmin) {
     if (authNotice) authNotice.style.display = 'block';
+    if (authGate) authGate.style.display = 'flex';
     if (tableSection) tableSection.style.display = 'none';
     if (superDeck) superDeck.style.display = 'none';
+    if (manualInput) manualInput.disabled = true;
+    if (manualBtn) manualBtn.disabled = true;
+
+    if (isScannerRunning) {
+      stopScanner();
+    }
 
     authNav.innerHTML = `
       <button id="openLoginBtn" class="btn btn-sm btn-primary">
@@ -532,11 +573,25 @@ function renderAuthNavbar() {
         Admin Sign In
       </button>
     `;
-    document.getElementById('openLoginBtn').addEventListener('click', () => {
-      document.getElementById('loginModal').style.display = 'flex';
-    });
+    const openLogin = document.getElementById('openLoginBtn');
+    if (openLogin) {
+      openLogin.addEventListener('click', () => {
+        document.getElementById('loginModal').style.display = 'flex';
+      });
+    }
+
+    const authGateBtn = document.getElementById('authGateLoginBtn');
+    if (authGateBtn) {
+      authGateBtn.onclick = () => {
+        document.getElementById('loginModal').style.display = 'flex';
+      };
+    }
   } else {
     if (authNotice) authNotice.style.display = 'none';
+    if (authGate) authGate.style.display = 'none';
+    if (manualInput) manualInput.disabled = false;
+    if (manualBtn) manualBtn.disabled = false;
+
     const isSuper = currentAdmin.role === 'superadmin';
 
     // Regular Booth Admins get an ultra-clean, simple interface without the overwhelmed 1260-row table
@@ -556,9 +611,13 @@ function renderAuthNavbar() {
     document.getElementById('logoutBtn').addEventListener('click', () => {
       currentAdmin = null;
       localStorage.removeItem('eeefest_logged_admin');
+      if (isScannerRunning) {
+        stopScanner();
+      }
       renderAuthNavbar();
       updateUIForCurrentCategory();
       refreshStatsAndTable();
+      showNotification('Signed out successfully.');
     });
 
     if (superDeck && isSuper) {
@@ -1454,12 +1513,12 @@ async function renderCouponToCanvas(code, templateImg) {
   ];
 
   for (const s of stubs) {
-    // Generate QR code as data URL
+    // Generate high-resolution QR code (width: 520 provides crisp 2x supersampling for high-DPI print)
     let qrDataUrl = '';
     if (typeof QRCode !== 'undefined' && QRCode.toDataURL) {
       try {
         qrDataUrl = await QRCode.toDataURL(code, {
-          width: 260,
+          width: 520,
           margin: 1,
           color: { dark: s.color, light: '#ffffff' }
         });
@@ -1475,6 +1534,8 @@ async function renderCouponToCanvas(code, templateImg) {
         q.onerror = rej;
         q.src = qrDataUrl;
       });
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(qImg, s.cx - 130, s.cy - 130, 260, 260);
     }
 
@@ -1489,10 +1550,10 @@ async function renderCouponToCanvas(code, templateImg) {
     ctx.restore();
   }
 
-  return canvas.toDataURL('image/jpeg', 0.88);
+  return canvas.toDataURL('image/jpeg', 0.94);
 }
 
-async function generateCouponsPdfClientSide(records, onProgress) {
+async function generateCouponsPdfClientSide(records, onProgress, filename = '') {
   const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
   if (!jsPDFClass) {
     throw new Error('PDF Generation SDK (jsPDF) is not loaded.');
@@ -1542,7 +1603,8 @@ async function generateCouponsPdfClientSide(records, onProgress) {
   }
 
   // Trigger download of generated PDF
-  doc.save(`EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`);
+  const outName = filename || `EEE_FEST_2026_Coupons_Addon_${Date.now()}.pdf`;
+  doc.save(outName);
   return true;
 }
 
@@ -1665,6 +1727,7 @@ function initAddonCouponModal() {
 
         const startSerial = startFrom1 ? 1 : (localCoupons.length + 1);
         const newRecords = [];
+        const batchTimestamp = new Date().toLocaleString();
 
         for (let i = 0; i < newCodes.length; i++) {
           const code = newCodes[i];
@@ -1672,6 +1735,7 @@ function initAddonCouponModal() {
             serial: startSerial + i,
             code: code,
             qr_data: code,
+            created_at: batchTimestamp,
             raffle_status: 'AVAILABLE',
             raffle_submitted_at: '',
             raffle_scanned_by: '',
@@ -1826,10 +1890,12 @@ function initManualCouponModal() {
         serial = localCoupons.length + 1;
       }
 
+      const manualTimestamp = new Date().toLocaleString();
       const rec = {
         serial: serial,
         code: code,
         qr_data: code,
+        created_at: manualTimestamp,
         raffle_status: 'AVAILABLE',
         raffle_submitted_at: '',
         raffle_scanned_by: '',
@@ -2064,35 +2130,166 @@ async function fetchStats() {
   renderActivityList(localActivity);
 }
 
+function updateSelectedActionBar() {
+  const bar = document.getElementById('selectedActionBar');
+  const countLabel = document.getElementById('selectedCountLabel');
+  const count = selectedCouponCodes.size;
+  if (countLabel) countLabel.innerText = count.toLocaleString();
+  if (bar) {
+    bar.style.display = count > 0 ? 'flex' : 'none';
+  }
+}
+
+function updateBatchFilterOptions() {
+  const select = document.getElementById('tableBatchFilter');
+  if (!select) return;
+
+  const currentVal = select.value;
+  const batches = Array.from(new Set(localCoupons.map(c => c.created_at || '2026-11-20 08:00:00 AM'))).filter(Boolean);
+
+  let html = '<option value="all">All Batches / Timestamps</option>';
+  for (const b of batches) {
+    const count = localCoupons.filter(c => (c.created_at || '2026-11-20 08:00:00 AM') === b).length;
+    html += `<option value="${b}">${b} (${count})</option>`;
+  }
+  select.innerHTML = html;
+  if (batches.includes(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
 function initTableControls() {
   const searchInput = document.getElementById('tableSearchInput');
   const statusSelect = document.getElementById('tableStatusFilter');
+  const batchSelect = document.getElementById('tableBatchFilter');
   const prevBtn = document.getElementById('prevPageBtn');
   const nextBtn = document.getElementById('nextPageBtn');
+  const selectAllCheckbox = document.getElementById('selectAllCouponsCheckbox');
+  const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+  const downloadSelectedBtn = document.getElementById('downloadSelectedPdfBtn');
 
-  searchInput.addEventListener('input', (e) => {
-    searchQuery = e.target.value.trim().toUpperCase();
-    currentPage = 1;
-    fetchCoupons();
-  });
-
-  statusSelect.addEventListener('change', (e) => {
-    statusFilter = e.target.value;
-    currentPage = 1;
-    fetchCoupons();
-  });
-
-  prevBtn.addEventListener('click', () => {
-    if (currentPage > 1) {
-      currentPage--;
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.trim().toUpperCase();
+      currentPage = 1;
       fetchCoupons();
-    }
-  });
+    });
+  }
 
-  nextBtn.addEventListener('click', () => {
-    currentPage++;
-    fetchCoupons();
-  });
+  if (statusSelect) {
+    statusSelect.addEventListener('change', (e) => {
+      statusFilter = e.target.value;
+      currentPage = 1;
+      fetchCoupons();
+    });
+  }
+
+  if (batchSelect) {
+    batchSelect.addEventListener('change', (e) => {
+      createdBatchFilter = e.target.value;
+      currentPage = 1;
+      fetchCoupons();
+    });
+  }
+
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+      let filtered = localCoupons;
+      const statusKey = currentCategory === 'lunch' ? 'lunch_status' : (currentCategory === 'tshirt' ? 'tshirt_status' : 'raffle_status');
+      const claimedVal = currentCategory in {'lunch':1, 'tshirt':1} ? 'REDEEMED' : 'SUBMITTED';
+
+      if (searchQuery) {
+        filtered = filtered.filter(c => c.code.includes(searchQuery) || String(c.serial) === searchQuery || `#${String(c.serial).padStart(4, '0')}`.includes(searchQuery));
+      }
+      if (statusFilter === 'submitted') {
+        filtered = filtered.filter(c => c[statusKey] === claimedVal);
+      } else if (statusFilter === 'available') {
+        filtered = filtered.filter(c => c[statusKey] === 'AVAILABLE');
+      }
+      if (createdBatchFilter && createdBatchFilter !== 'all') {
+        filtered = filtered.filter(c => (c.created_at || '2026-11-20 08:00:00 AM') === createdBatchFilter);
+      }
+
+      const start = (currentPage - 1) * itemsPerPage;
+      const pageItems = filtered.slice(start, start + itemsPerPage);
+
+      if (e.target.checked) {
+        pageItems.forEach(c => selectedCouponCodes.add(c.code));
+      } else {
+        pageItems.forEach(c => selectedCouponCodes.delete(c.code));
+      }
+      fetchCoupons();
+    });
+  }
+
+  if (clearSelectionBtn) {
+    clearSelectionBtn.addEventListener('click', () => {
+      selectedCouponCodes.clear();
+      fetchCoupons();
+    });
+  }
+
+  if (downloadSelectedBtn) {
+    downloadSelectedBtn.addEventListener('click', async () => {
+      if (selectedCouponCodes.size === 0) {
+        showNotification('No coupons selected for download.', 'warning');
+        return;
+      }
+      const selectedList = localCoupons.filter(c => selectedCouponCodes.has(c.code));
+      downloadSelectedBtn.disabled = true;
+      downloadSelectedBtn.innerText = `Compiling PDF (${selectedList.length})...`;
+
+      const progressWrap = document.getElementById('addonProgressWrap');
+      const progressBar = document.getElementById('addonProgressBar');
+      const progressText = document.getElementById('addonProgressText');
+      const progressPct = document.getElementById('addonProgressPct');
+      const addonModal = document.getElementById('addonModal');
+
+      if (addonModal) addonModal.style.display = 'flex';
+      if (progressWrap) {
+        progressWrap.style.display = 'block';
+        if (progressBar) progressBar.style.width = '5%';
+        if (progressText) progressText.innerText = `Preparing printable sheets for ${selectedList.length} passes...`;
+      }
+
+      try {
+        await generateCouponsPdfClientSide(selectedList, (pct, msg) => {
+          if (progressBar) progressBar.style.width = pct + '%';
+          if (progressPct) progressPct.innerText = pct + '%';
+          if (progressText) progressText.innerText = msg;
+        }, `EEE_FEST_2026_Selected_${selectedList.length}_Coupons.pdf`);
+
+        showNotification(`Downloaded printable PDF for ${selectedList.length} selected coupons.`, 'success');
+        setTimeout(() => {
+          if (addonModal) addonModal.style.display = 'none';
+        }, 1200);
+      } catch (err) {
+        showNotification(`PDF generation failed: ${err.message}`, 'danger');
+      } finally {
+        downloadSelectedBtn.disabled = false;
+        downloadSelectedBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download Selected Printable PDF
+        `;
+      }
+    });
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        fetchCoupons();
+      }
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      currentPage++;
+      fetchCoupons();
+    });
+  }
 }
 
 async function fetchCoupons() {
@@ -2101,6 +2298,8 @@ async function fetchCoupons() {
   const infoLabel = document.getElementById('paginationInfo');
   const prevBtn = document.getElementById('prevPageBtn');
   const nextBtn = document.getElementById('nextPageBtn');
+
+  updateBatchFilterOptions();
 
   let filtered = localCoupons;
   const statusKey = currentCategory === 'lunch' ? 'lunch_status' : (currentCategory === 'tshirt' ? 'tshirt_status' : 'raffle_status');
@@ -2116,27 +2315,33 @@ async function fetchCoupons() {
     filtered = filtered.filter(c => c[statusKey] === 'AVAILABLE');
   }
 
+  if (createdBatchFilter && createdBatchFilter !== 'all') {
+    filtered = filtered.filter(c => (c.created_at || '2026-11-20 08:00:00 AM') === createdBatchFilter);
+  }
+
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / itemsPerPage));
   if (currentPage > totalPages) currentPage = totalPages;
 
-  pageLabel.innerText = `Page ${currentPage} of ${totalPages}`;
+  if (pageLabel) pageLabel.innerText = `Page ${currentPage} of ${totalPages}`;
   const startNum = totalFiltered === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endNum = Math.min(currentPage * itemsPerPage, totalFiltered);
-  infoLabel.innerText = `Showing ${startNum} to ${endNum} of ${totalFiltered.toLocaleString()} coupons`;
+  if (infoLabel) infoLabel.innerText = `Showing ${startNum} to ${endNum} of ${totalFiltered.toLocaleString()} coupons`;
 
-  prevBtn.disabled = (currentPage <= 1);
-  nextBtn.disabled = (currentPage >= totalPages);
+  if (prevBtn) prevBtn.disabled = (currentPage <= 1);
+  if (nextBtn) nextBtn.disabled = (currentPage >= totalPages);
 
   const start = (currentPage - 1) * itemsPerPage;
   const items = filtered.slice(start, start + itemsPerPage);
 
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">No matching coupons found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4">No matching coupons found.</td></tr>';
+    updateSelectedActionBar();
     return;
   }
 
   tbody.innerHTML = items.map(c => {
+    const isChecked = selectedCouponCodes.has(c.code) ? 'checked' : '';
     const rBadge = c.raffle_status === 'SUBMITTED' 
       ? '<span class="status-badge badge-success">SUBMITTED</span>' 
       : '<span class="status-badge badge-neutral">AVAILABLE</span>';
@@ -2150,11 +2355,16 @@ async function fetchCoupons() {
       : '<span class="status-badge badge-neutral">AVAILABLE</span>';
 
     const lastBy = c.raffle_scanned_by || c.lunch_scanned_by || c.tshirt_scanned_by || '—';
+    const createdAt = c.created_at || '2026-11-20 08:00:00 AM';
 
     return `
       <tr>
+        <td style="text-align: center;">
+          <input type="checkbox" class="coupon-select-checkbox" data-code="${c.code}" ${isChecked}>
+        </td>
         <td>#${String(c.serial).padStart(4, '0')}</td>
         <td class="table-code">${c.code}</td>
+        <td style="font-size: 0.76rem; color: var(--text-muted);">${createdAt}</td>
         <td>${rBadge}</td>
         <td>${lBadge}</td>
         <td>${tBadge}</td>
@@ -2168,6 +2378,26 @@ async function fetchCoupons() {
       </tr>
     `;
   }).join('');
+
+  // Row checkbox change listeners
+  tbody.querySelectorAll('.coupon-select-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const code = e.target.dataset.code;
+      if (e.target.checked) {
+        selectedCouponCodes.add(code);
+      } else {
+        selectedCouponCodes.delete(code);
+      }
+      updateSelectedActionBar();
+    });
+  });
+
+  const selectAll = document.getElementById('selectAllCouponsCheckbox');
+  if (selectAll) {
+    selectAll.checked = items.length > 0 && items.every(c => selectedCouponCodes.has(c.code));
+  }
+
+  updateSelectedActionBar();
 }
 
 // ========================================================
@@ -2194,6 +2424,7 @@ function downloadLiveExcel() {
   const headers = [
     "SL No",
     "Coupon Code",
+    "Created At",
     "Raffle Draw Status",
     "Raffle Scanned At",
     "Raffle Scanned By",
@@ -2211,6 +2442,7 @@ function downloadLiveExcel() {
     rows.push([
       c.serial || (idx + 1),
       c.code,
+      c.created_at || "2026-11-20 08:00:00 AM",
       c.raffle_status || "AVAILABLE",
       c.raffle_submitted_at || "",
       c.raffle_scanned_by || "",
@@ -2230,6 +2462,7 @@ function downloadLiveExcel() {
   ws['!cols'] = [
     { wch: 8 },  // SL No
     { wch: 15 }, // Coupon Code
+    { wch: 24 }, // Created At
     { wch: 18 }, // Raffle Draw Status
     { wch: 22 }, // Raffle Scanned At
     { wch: 22 }, // Raffle Scanned By

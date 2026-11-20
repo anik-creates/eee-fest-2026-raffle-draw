@@ -199,6 +199,19 @@
           </div>
         </div>
 
+        <!-- Authentication Required Gate Overlay in Workstation -->
+        <div id="scannerAuthGate" class="scanner-auth-gate" style="display: none;">
+          <div class="auth-gate-box">
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <h3>Admin Sign In Required</h3>
+            <p>Only verified Admins and Super Admins can access the QR scanner, perform manual redemptions, and view live pass statuses.</p>
+            <button id="authGateLoginBtn" class="btn btn-primary" type="button">Sign In with Admin Account</button>
+          </div>
+        </div>
+
         <!-- Section Lock Notice -->
         <div id="sectionLockNotice" style="display: none; padding: 0.65rem 0.85rem; background: var(--danger-bg); border-left: 3px solid var(--danger); margin-bottom: 0.85rem; border-radius: 4px; font-size: 0.82rem; color: #ff80ab;"></div>
 
@@ -316,6 +329,23 @@
             <option value="submitted">Submitted Only</option>
             <option value="available">Available (Unclaimed)</option>
           </select>
+          <select id="tableBatchFilter" class="form-input" style="padding: 0.45rem 0.65rem; font-size: 0.85rem; width: auto; max-width: 210px;">
+            <option value="all">All Batches / Timestamps</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Selected Coupons Floating Action Bar -->
+      <div id="selectedActionBar" class="selected-actions-bar" style="display: none;">
+        <div>
+          Selected: <strong><span id="selectedCountLabel">0</span></strong> coupon(s)
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <button id="downloadSelectedPdfBtn" class="btn btn-sm btn-primary" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download Selected Printable PDF
+          </button>
+          <button id="clearSelectionBtn" class="btn btn-sm btn-secondary" type="button">Clear Selection</button>
         </div>
       </div>
 
@@ -323,8 +353,10 @@
         <table class="data-table">
           <thead>
             <tr>
+              <th style="width: 38px; text-align: center;"><input type="checkbox" id="selectAllCouponsCheckbox" class="coupon-select-checkbox" title="Select all on this page"></th>
               <th>SL</th>
               <th>Coupon Code</th>
+              <th>Created At</th>
               <th>Raffle Draw</th>
               <th>Lunch Status</th>
               <th>T-Shirt Status</th>
@@ -334,7 +366,7 @@
           </thead>
           <tbody id="couponsTableBody">
             <tr>
-              <td colspan="7" class="text-center py-4">Loading coupons database...</td>
+              <td colspan="9" class="text-center py-4">Loading coupons database...</td>
             </tr>
           </tbody>
         </table>
@@ -594,6 +626,9 @@
       <p class="footer-credit">EEE FEST 2026 Raffle Draw System | Created by Anik Sarker</p>
     </div>
   </footer>
+
+  <!-- Floating Toast Notifications Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
   <script src="./app.js"></script>
 </body>

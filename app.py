@@ -129,21 +129,22 @@ def sync_excel_row(coupon):
         row_num = coupon["serial"] + 1  # 1-based header offset
 
         # Columns:
-        # 1: SL No, 2: Coupon Code
-        # 3: Raffle Draw Status, 4: Raffle Scanned At, 5: Raffle Scanned By
-        # 6: Lunch Status, 7: Lunch Scanned At, 8: Lunch Scanned By
-        # 9: T-Shirt Status, 10: T-Shirt Scanned At, 11: T-Shirt Scanned By
-        ws.cell(row=row_num, column=3, value=coupon.get("raffle_status", "AVAILABLE"))
-        ws.cell(row=row_num, column=4, value=coupon.get("raffle_submitted_at", ""))
-        ws.cell(row=row_num, column=5, value=coupon.get("raffle_scanned_by", ""))
+        # 1: SL No, 2: Coupon Code, 3: Created At
+        # 4: Raffle Draw Status, 5: Raffle Scanned At, 6: Raffle Scanned By
+        # 7: Lunch Status, 8: Lunch Scanned At, 9: Lunch Scanned By
+        # 10: T-Shirt Status, 11: T-Shirt Scanned At, 12: T-Shirt Scanned By
+        ws.cell(row=row_num, column=3, value=coupon.get("created_at", ""))
+        ws.cell(row=row_num, column=4, value=coupon.get("raffle_status", "AVAILABLE"))
+        ws.cell(row=row_num, column=5, value=coupon.get("raffle_submitted_at", ""))
+        ws.cell(row=row_num, column=6, value=coupon.get("raffle_scanned_by", ""))
 
-        ws.cell(row=row_num, column=6, value=coupon.get("lunch_status", "AVAILABLE"))
-        ws.cell(row=row_num, column=7, value=coupon.get("lunch_redeemed_at", ""))
-        ws.cell(row=row_num, column=8, value=coupon.get("lunch_scanned_by", ""))
+        ws.cell(row=row_num, column=7, value=coupon.get("lunch_status", "AVAILABLE"))
+        ws.cell(row=row_num, column=8, value=coupon.get("lunch_redeemed_at", ""))
+        ws.cell(row=row_num, column=9, value=coupon.get("lunch_scanned_by", ""))
 
-        ws.cell(row=row_num, column=9, value=coupon.get("tshirt_status", "AVAILABLE"))
-        ws.cell(row=row_num, column=10, value=coupon.get("tshirt_redeemed_at", ""))
-        ws.cell(row=row_num, column=11, value=coupon.get("tshirt_scanned_by", ""))
+        ws.cell(row=row_num, column=10, value=coupon.get("tshirt_status", "AVAILABLE"))
+        ws.cell(row=row_num, column=11, value=coupon.get("tshirt_redeemed_at", ""))
+        ws.cell(row=row_num, column=12, value=coupon.get("tshirt_scanned_by", ""))
 
         wb.save(EXCEL_PATH)
     except PermissionError:

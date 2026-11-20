@@ -83,7 +83,8 @@ def generate_qr_images(codes):
         k_file = os.path.join(QR_DIR, f"{base_name}_black.png")
         b_file = os.path.join(QR_DIR, f"{base_name}_blue.png")
 
-        qr = qrcode.QRCode(box_size=3, border=1)
+        # High-resolution QR codes (box_size=12 gives crisp ~350px image for high-precision printing)
+        qr = qrcode.QRCode(box_size=12, border=1)
         qr.add_data(code)
         qr.make(fit=True)
 
@@ -135,6 +136,7 @@ def build_databases(codes, qr_map):
     headers = [
         "SL No",
         "Coupon Code",
+        "Created At",
         "Raffle Draw Status",
         "Raffle Scanned At",
         "Raffle Scanned By",
@@ -156,6 +158,7 @@ def build_databases(codes, qr_map):
         cell.alignment = center_align
 
     db_records = []
+    initial_created_at = "2026-11-20 08:00:00 AM"
 
     for idx, code in enumerate(codes, 1):
         qfile = qr_map[code]["main"]
@@ -163,6 +166,7 @@ def build_databases(codes, qr_map):
             "serial": idx,
             "code": code,
             "qr_data": code,
+            "created_at": initial_created_at,
             "raffle_status": "AVAILABLE",
             "raffle_submitted_at": "",
             "raffle_scanned_by": "",
@@ -181,6 +185,7 @@ def build_databases(codes, qr_map):
         row_values = [
             idx,
             code,
+            initial_created_at,
             "AVAILABLE",
             "",
             "",
@@ -203,7 +208,7 @@ def build_databases(codes, qr_map):
             if c_idx == 2:
                 c.font = code_font
                 c.alignment = center_align
-            elif c_idx in [1, 3, 6, 9]:
+            elif c_idx in [1, 3, 4, 7, 10]:
                 c.font = data_font
                 c.alignment = center_align
             else:
@@ -211,8 +216,8 @@ def build_databases(codes, qr_map):
                 c.alignment = left_align
 
     col_widths = {
-        "A": 9, "B": 15, "C": 18, "D": 22, "E": 22,
-        "F": 15, "G": 22, "H": 22, "I": 15, "J": 22, "K": 22, "L": 26
+        "A": 9, "B": 15, "C": 24, "D": 18, "E": 22, "F": 22,
+        "G": 15, "H": 22, "I": 22, "J": 15, "K": 22, "L": 22, "M": 26
     }
     for col_letter, width in col_widths.items():
         ws.column_dimensions[col_letter].width = width
