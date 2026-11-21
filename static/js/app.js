@@ -51,6 +51,20 @@ let selectedCouponCodes = new Set();
 
 // In-Memory Storage
 let localCoupons = [];
+
+// Authoritative local coupon list setter: enforces strict deduplication by coupon code
+function setLocalCoupons(couponsList) {
+  if (!Array.isArray(couponsList)) return;
+  const map = new Map();
+  for (const c of couponsList) {
+    if (c && c.code) {
+      const codeKey = String(c.code).trim().toUpperCase();
+      map.set(codeKey, { ...c, code: codeKey });
+    }
+  }
+  localCoupons = Array.from(map.values()).sort((a, b) => (Number(a.serial) || 0) - (Number(b.serial) || 0));
+}
+
 let localAdmins = [];
 let localActivity = [];
 let pendingOfflineScans = [];
@@ -287,12 +301,12 @@ function initRealtimeSync() {
     rtdb.ref('coupons').on('value', snap => {
       const remoteData = snap.val();
       if (remoteData) {
-        const remoteList = Array.isArray(remoteData) ? remoteData : Object.values(remoteData);
-        localCoupons = remoteList;
+        const remoteList = Array.isArray(remoteData) ? remoteData.filter(Boolean) : Object.values(remoteData);
+        setLocalCoupons(remoteList);
         localStorage.removeItem('eeefest_database_wiped');
       } else {
         // Authoritative cloud state is empty (database wiped by Super Admin)
-        localCoupons = [];
+        setLocalCoupons([]);
       }
       refreshStatsAndTable();
     });
@@ -353,9 +367,9 @@ async function initStorage() {
 
   // Seed initial in-memory dataset unless database was explicitly wiped
   if (localStorage.getItem('eeefest_database_wiped') === 'true') {
-    localCoupons = [];
+    setLocalCoupons([]);
   } else if (window.INITIAL_COUPONS_DATA) {
-    localCoupons = JSON.parse(JSON.stringify(window.INITIAL_COUPONS_DATA));
+    setLocalCoupons(window.INITIAL_COUPONS_DATA);
   }
 
   // Seed admins
@@ -390,11 +404,12 @@ async function initStorage() {
 // Sync coupon updates to Firebase Realtime Database & local storage
 async function syncCouponToCloud(coupon) {
   // 1. Immediately update in-memory and local cache
-  const idx = localCoupons.findIndex(c => c.code === coupon.code);
+  const cleanCode = String(coupon.code).trim().toUpperCase();
+  const idx = localCoupons.findIndex(c => c.code.toUpperCase() === cleanCode);
   if (idx !== -1) {
     localCoupons[idx] = Object.assign(localCoupons[idx], coupon);
   } else {
-    localCoupons.push(coupon);
+    setLocalCoupons([...localCoupons, coupon]);
   }
 
   // 2. Realtime Database (Sub-second broadcast to all active admins)
@@ -1195,11 +1210,11 @@ async function verifyCode(rawCode) {
       const snap = await rtdb.ref('coupons/' + cleanCode).once('value');
       const cloudVal = snap.val();
       if (cloudVal) {
-        const idx = localCoupons.findIndex(c => c.code === cleanCode);
+        const idx = localCoupons.findIndex(c => c.code.toUpperCase() === cleanCode);
         if (idx !== -1) {
           localCoupons[idx] = Object.assign(localCoupons[idx], cloudVal);
         } else {
-          localCoupons.push(cloudVal);
+          setLocalCoupons([...localCoupons, cloudVal]);
         }
       }
     } catch (e) {}
@@ -1397,9 +1412,10 @@ function updateInstantHud(status, message, coupon = null) {
 // RESET & DELETE ENTRY FUNCTIONS
 // ========================================================
 window.resetCouponCode = async function(code) {
-  if (!confirm(`Reset verification status for Coupon ${code} back to AVAILABLE?`)) return;
+  const cleanCode = String(code).trim().toUpperCase();
+  if (!confirm(`Reset verification status for Coupon ${cleanCode} back to AVAILABLE?`)) return;
 
-  const coupon = localCoupons.find(c => c.code === code);
+  const coupon = localCoupons.find(c => c.code.toUpperCase() === cleanCode);
   if (coupon) {
     if (currentCategory === 'lunch') {
       coupon.lunch_status = 'AVAILABLE';
@@ -1422,34 +1438,42 @@ window.resetCouponCode = async function(code) {
         await fetch('/api/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, category: currentCategory })
+          body: JSON.stringify({ code: cleanCode, category: currentCategory })
         });
       } catch (e) {}
     }
 
-    renderResultBox('SUCCESS', `Coupon ${code} status reset to AVAILABLE.`, coupon);
+    renderResultBox('SUCCESS', `Coupon ${cleanCode} status reset to AVAILABLE.`, coupon);
     refreshStatsAndTable();
+    showNotification(`Coupon ${cleanCode} status reset to AVAILABLE.`, 'success');
   }
 };
 
 window.deleteCouponCode = async function(code) {
-  if (!confirm(`Are you sure you want to permanently DELETE Coupon ${code} from the database?`)) return;
+  const targetCode = String(code).trim().toUpperCase();
+  if (!confirm(`Are you sure you want to permanently DELETE Coupon ${targetCode} from the database?`)) return;
 
-  localCoupons = localCoupons.filter(c => c.code !== code);
+  // 1. Immediately deduplicate and remove from local state and selection
+  setLocalCoupons(localCoupons.filter(c => c.code.toUpperCase() !== targetCode));
+  selectedCouponCodes.delete(targetCode);
 
+  // 2. Remove from Firebase Realtime Database
   if (rtdb) {
-    try { await rtdb.ref('coupons/' + code).remove(); } catch (e) {}
+    try { await rtdb.ref('coupons/' + targetCode).remove(); } catch (e) {
+      console.warn('RTDB remove coupon note:', e);
+    }
   }
   if (firestoreDb) {
-    try { await firestoreDb.collection('coupons').doc(code).delete(); } catch (e) {}
+    try { await firestoreDb.collection('coupons').doc(targetCode).delete(); } catch (e) {}
   }
 
   if (isLiveApi) {
-    try { await fetch(`/api/coupons/${code}`, { method: 'DELETE' }); } catch (e) {}
+    try { await fetch(`/api/coupons/${targetCode}`, { method: 'DELETE' }); } catch (e) {}
   }
 
   resetResultBox();
   refreshStatsAndTable();
+  showNotification(`Coupon ${targetCode} permanently deleted from database.`, 'info');
 };
 
 // ========================================================
@@ -1712,6 +1736,9 @@ function initAddonCouponModal() {
   }
 
   if (form) {
+    if (form.dataset.bound) return;
+    form.dataset.bound = 'true';
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const count = parseInt(document.getElementById('addonCountInput').value, 10) || 1260;
@@ -1751,7 +1778,7 @@ function initAddonCouponModal() {
 
           // Reset database with pristine 1,260 coupons
           if (window.INITIAL_COUPONS_DATA) {
-            localCoupons = JSON.parse(JSON.stringify(window.INITIAL_COUPONS_DATA));
+            setLocalCoupons(window.INITIAL_COUPONS_DATA);
             localStorage.removeItem('eeefest_database_wiped');
             if (rtdb) {
               const updates = {};
@@ -1799,7 +1826,8 @@ function initAddonCouponModal() {
           }
         }
 
-        const startSerial = startFrom1 ? 1 : (localCoupons.length + 1);
+        const maxSerial = localCoupons.reduce((max, c) => Math.max(max, Number(c.serial) || 0), 0);
+        const startSerial = startFrom1 ? 1 : (maxSerial + 1);
         const newRecords = [];
         const batchTimestamp = new Date().toLocaleString();
 
@@ -1847,10 +1875,10 @@ function initAddonCouponModal() {
         }
 
         if (startFrom1) {
-          localCoupons = [...newRecords];
+          setLocalCoupons(newRecords);
           localStorage.removeItem('eeefest_database_wiped');
         } else {
-          localCoupons.push(...newRecords);
+          setLocalCoupons([...localCoupons, ...newRecords]);
         }
 
         // Auto-download updated Master Excel sheet
@@ -1935,6 +1963,9 @@ function initManualCouponModal() {
   }
 
   if (form) {
+    if (form.dataset.bound) return;
+    form.dataset.bound = 'true';
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const code = codeInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1961,7 +1992,8 @@ function initManualCouponModal() {
 
       let serial = parseInt(serialInput.value, 10);
       if (isNaN(serial) || serial < 1) {
-        serial = localCoupons.length + 1;
+        const maxSerial = localCoupons.reduce((max, c) => Math.max(max, Number(c.serial) || 0), 0);
+        serial = maxSerial + 1;
       }
 
       const manualTimestamp = new Date().toLocaleString();
@@ -2004,7 +2036,7 @@ function initManualCouponModal() {
           try { await firestoreDb.collection('coupons').doc(code).set(rec); } catch (e) {}
         }
 
-        localCoupons.push(rec);
+        setLocalCoupons([...localCoupons, rec]);
         localStorage.removeItem('eeefest_database_wiped');
         refreshStatsAndTable();
         sfx.playSuccess();
@@ -2016,7 +2048,7 @@ function initManualCouponModal() {
 
         codeInput.value = '';
         serialInput.value = '';
-        showNotification(`Coupon ${code} added to master database.`);
+        showNotification(`Coupon ${code} added to master database.`, 'success');
       } catch (err) {
         sfx.playError();
         msgBox.innerText = 'PDF generation failed: ' + err.message + '. Coupon was NOT added to the database.';
@@ -2062,6 +2094,9 @@ function initDeleteAllModal() {
   if (cancelBtn) cancelBtn.addEventListener('click', hideModal);
 
   if (form) {
+    if (form.dataset.bound) return;
+    form.dataset.bound = 'true';
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const enteredPwd = pwdInput.value.trim();
@@ -2101,7 +2136,8 @@ function initDeleteAllModal() {
         } catch (e) {}
 
         localStorage.setItem('eeefest_database_wiped', 'true');
-        localCoupons = [];
+        setLocalCoupons([]);
+        selectedCouponCodes.clear();
         resetResultBox();
         refreshStatsAndTable();
         sfx.playWarning();
