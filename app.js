@@ -1491,7 +1491,63 @@ function loadTemplateImage() {
   });
 }
 
+async function ensureQrCodeLib() {
+  if (typeof QRCode !== 'undefined') return true;
+  return new Promise((resolve) => {
+    const s1 = document.createElement('script');
+    s1.src = './qrcode.min.js';
+    s1.onload = () => resolve(typeof QRCode !== 'undefined');
+    s1.onerror = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js';
+      s2.onload = () => resolve(typeof QRCode !== 'undefined');
+      s2.onerror = () => resolve(false);
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  });
+}
+
+function drawQrToCanvasContext(ctx, code, cx, cy, size, color) {
+  if (typeof QRCode !== 'undefined' && QRCode.create) {
+    try {
+      const qr = QRCode.create(code, { errorCorrectionLevel: 'M' });
+      const modSize = qr.modules.size;
+      const margin = 1;
+      const totalModules = modSize + margin * 2;
+      const cellSize = size / totalModules;
+      const startX = cx - size / 2;
+      const startY = cy - size / 2;
+
+      // Solid white background padding for optical clarity
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(startX, startY, size, size);
+
+      // Render dark modules with 0.1px bleed to eliminate anti-aliasing gaps
+      ctx.fillStyle = color;
+      for (let r = 0; r < modSize; r++) {
+        for (let c = 0; c < modSize; c++) {
+          if (qr.modules.get(r, c)) {
+            ctx.fillRect(
+              startX + (c + margin) * cellSize,
+              startY + (r + margin) * cellSize,
+              cellSize + 0.1,
+              cellSize + 0.1
+            );
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('QRCode.create direct matrix render note:', e);
+    }
+  }
+  return false;
+}
+
 async function renderCouponToCanvas(code, templateImg) {
+  await ensureQrCodeLib();
+
   const canvas = document.createElement('canvas');
   canvas.width = 4251;
   canvas.height = 1425;
@@ -1513,30 +1569,48 @@ async function renderCouponToCanvas(code, templateImg) {
   ];
 
   for (const s of stubs) {
-    // Generate high-resolution QR code (width: 520 provides crisp 2x supersampling for high-DPI print)
-    let qrDataUrl = '';
-    if (typeof QRCode !== 'undefined' && QRCode.toDataURL) {
+    // 1. Primary QR Renderer: Vector-sharp direct mathematical matrix rendering (synchronous & native)
+    let drawn = drawQrToCanvasContext(ctx, code, s.cx, s.cy, 260, s.color);
+
+    // 2. Secondary QR Fallback: QRCode.toCanvas offscreen rendering
+    if (!drawn && typeof QRCode !== 'undefined' && QRCode.toCanvas) {
       try {
-        qrDataUrl = await QRCode.toDataURL(code, {
+        const qrCanvas = document.createElement('canvas');
+        await QRCode.toCanvas(qrCanvas, code, {
           width: 520,
           margin: 1,
           color: { dark: s.color, light: '#ffffff' }
         });
+        ctx.drawImage(qrCanvas, s.cx - 130, s.cy - 130, 260, 260);
+        drawn = true;
       } catch (e) {
-        console.warn('QR gen warning:', e);
+        console.warn('QRCode.toCanvas fallback note:', e);
       }
     }
 
-    if (qrDataUrl) {
-      const qImg = await new Promise((res, rej) => {
-        const q = new Image();
-        q.onload = () => res(q);
-        q.onerror = rej;
-        q.src = qrDataUrl;
-      });
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(qImg, s.cx - 130, s.cy - 130, 260, 260);
+    // 3. Tertiary QR Fallback: QRCode.toDataURL image decoding
+    if (!drawn && typeof QRCode !== 'undefined' && QRCode.toDataURL) {
+      try {
+        const qrDataUrl = await QRCode.toDataURL(code, {
+          width: 520,
+          margin: 1,
+          color: { dark: s.color, light: '#ffffff' }
+        });
+        if (qrDataUrl) {
+          const qImg = await new Promise((res, rej) => {
+            const q = new Image();
+            q.onload = () => res(q);
+            q.onerror = rej;
+            q.src = qrDataUrl;
+          });
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(qImg, s.cx - 130, s.cy - 130, 260, 260);
+          drawn = true;
+        }
+      } catch (e) {
+        console.warn('QRCode.toDataURL fallback note:', e);
+      }
     }
 
     // Draw inline Coupon Code right next to 'Cupon No:'
