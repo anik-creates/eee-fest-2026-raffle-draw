@@ -35,9 +35,9 @@ ADMINS_JS_PATH = os.path.join(BASE_DIR, "admins_data.js")
 SETTINGS_PATH = os.path.join(BASE_DIR, "settings.json")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-TOTAL_COUPONS = 1260
+TOTAL_COUPONS = 1300
 COUPONS_PER_PAGE = 4
-TOTAL_PAGES = TOTAL_COUPONS // COUPONS_PER_PAGE  # 315 pages
+TOTAL_PAGES = TOTAL_COUPONS // COUPONS_PER_PAGE  # 325 pages
 
 # Unambiguous 32 alphanumeric characters (no 0/O, 1/I)
 CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -54,7 +54,7 @@ BLACK_PDF = (0.0, 0.0, 0.0)
 BLUE_PDF = (44/255, 84/255, 129/255)
 
 
-def generate_unique_codes(count=1260, seed=2026):
+def generate_unique_codes(count=1300, seed=2026):
     """Generate unique 4-character alphanumeric codes with letters & digits."""
     random.seed(seed)
     used = set()
@@ -70,7 +70,7 @@ def generate_unique_codes(count=1260, seed=2026):
 
 
 def generate_qr_images(codes):
-    """Generate all 1260 QR code PNG images in each color theme."""
+    """Generate all 1300 QR code PNG images in each color theme."""
     os.makedirs(QR_DIR, exist_ok=True)
     t0 = time.time()
     print(f"Generating QR code images for {len(codes)} coupons...")
@@ -83,19 +83,20 @@ def generate_qr_images(codes):
         k_file = os.path.join(QR_DIR, f"{base_name}_black.png")
         b_file = os.path.join(QR_DIR, f"{base_name}_blue.png")
 
-        # High-resolution QR codes (box_size=12 gives crisp ~350px image for high-precision printing)
-        qr = qrcode.QRCode(box_size=12, border=1)
-        qr.add_data(code)
-        qr.make(fit=True)
+        if not (os.path.exists(m_file) and os.path.exists(k_file) and os.path.exists(b_file)):
+            # High-resolution QR codes (box_size=12 gives crisp ~350px image for high-precision printing)
+            qr = qrcode.QRCode(box_size=12, border=1)
+            qr.add_data(code)
+            qr.make(fit=True)
 
-        img_m = qr.make_image(fill_color=MAROON_RGB, back_color="white").convert("RGB")
-        img_m.save(m_file)
+            img_m = qr.make_image(fill_color=MAROON_RGB, back_color="white").convert("RGB")
+            img_m.save(m_file)
 
-        img_k = qr.make_image(fill_color=BLACK_RGB, back_color="white").convert("RGB")
-        img_k.save(k_file)
+            img_k = qr.make_image(fill_color=BLACK_RGB, back_color="white").convert("RGB")
+            img_k.save(k_file)
 
-        img_b = qr.make_image(fill_color=BLUE_RGB, back_color="white").convert("RGB")
-        img_b.save(b_file)
+            img_b = qr.make_image(fill_color=BLUE_RGB, back_color="white").convert("RGB")
+            img_b.save(b_file)
 
         qr_map[code] = {
             "maroon": m_file,
@@ -436,6 +437,9 @@ def build_printable_pdf(codes, qr_map):
     c.save()
     pdf_size_mb = os.path.getsize(PDF_PATH) / (1024 * 1024)
     print(f"Printable PDF successfully saved: {PDF_PATH} ({pdf_size_mb:.2f} MB, {time.time()-t0:.1f}s)")
+    import shutil
+    shutil.copy2(PDF_PATH, os.path.join(DOCS_DIR, "EEE_FEST_2026_Coupons_Printable.pdf"))
+    print(f"Copied printable PDF to {os.path.join(DOCS_DIR, 'EEE_FEST_2026_Coupons_Printable.pdf')}")
 
 
 def main():

@@ -1741,7 +1741,7 @@ function initAddonCouponModal() {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const count = parseInt(document.getElementById('addonCountInput').value, 10) || 1260;
+      const count = parseInt(document.getElementById('addonCountInput').value, 10) || 1300;
       const startFrom1 = document.getElementById('addonStartNewBatch')?.checked || (localCoupons.length === 0);
       const msgBox = document.getElementById('addonMsg');
       const submitBtn = document.getElementById('addonSubmitBtn');
@@ -1758,13 +1758,13 @@ function initAddonCouponModal() {
       }
 
       try {
-        // Special Master Batch (1,260 coupons reset)
-        if (count === 1260 && startFrom1) {
-          if (progressText) progressText.innerText = 'Downloading 1,260 master printable PDF...';
+        // Special Master Batch (1,300 coupons reset)
+        if (count === 1300 && startFrom1) {
+          if (progressText) progressText.innerText = 'Downloading 1,300 master printable PDF...';
           if (progressBar) progressBar.style.width = '60%';
           if (progressPct) progressPct.innerText = '60%';
 
-          // Download the pre-compiled high-res 315-page master PDF
+          // Download the pre-compiled high-res 325-page master PDF
           const a = document.createElement('a');
           a.href = './EEE_FEST_2026_Coupons_Printable.pdf';
           a.download = 'EEE_FEST_2026_Coupons_Printable.pdf';
@@ -1772,11 +1772,11 @@ function initAddonCouponModal() {
           a.click();
           document.body.removeChild(a);
 
-          if (progressText) progressText.innerText = 'Syncing 1,260 coupons to database...';
+          if (progressText) progressText.innerText = 'Syncing 1,300 coupons to database...';
           if (progressBar) progressBar.style.width = '90%';
           if (progressPct) progressPct.innerText = '90%';
 
-          // Reset database with pristine 1,260 coupons
+          // Reset database with pristine 1,300 coupons
           if (window.INITIAL_COUPONS_DATA) {
             setLocalCoupons(window.INITIAL_COUPONS_DATA);
             localStorage.removeItem('eeefest_database_wiped');
@@ -1797,7 +1797,7 @@ function initAddonCouponModal() {
           if (progressPct) progressPct.innerText = '100%';
           if (progressText) progressText.innerText = 'Master batch completed successfully!';
 
-          msgBox.innerText = `Success: 1,260 coupons generated, synced to database, and 315-page PDF downloaded.`;
+          msgBox.innerText = `Success: 1,300 coupons generated, synced to database, and 325-page PDF downloaded.`;
           msgBox.style.background = 'var(--success-bg)';
           msgBox.style.color = 'var(--success)';
           msgBox.style.display = 'block';

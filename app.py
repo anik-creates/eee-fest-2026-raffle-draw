@@ -718,7 +718,7 @@ def generate_addon_coupons():
     import qrcode
 
     data = request.get_json() or {}
-    count = int(data.get("count", 1260))
+    count = int(data.get("count", 1300))
     start_from_1 = bool(data.get("start_from_1", False))
     if count < 1:
         count = 4
