@@ -1543,11 +1543,7 @@ function drawQrToCanvasContext(ctx, code, cx, cy, size, color) {
       const startX = cx - size / 2;
       const startY = cy - size / 2;
 
-      // Solid white background padding for optical clarity
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(startX, startY, size, size);
-
-      // Render dark modules with 0.1px bleed to eliminate anti-aliasing gaps
+      // Pure transparent background (no white box) - draw colored modules only
       ctx.fillStyle = color;
       for (let r = 0; r < modSize; r++) {
         for (let c = 0; c < modSize; c++) {
@@ -1573,39 +1569,39 @@ async function renderCouponToCanvas(code, templateImg) {
   await ensureQrCodeLib();
 
   const canvas = document.createElement('canvas');
-  canvas.width = 4251;
-  canvas.height = 1425;
+  canvas.width = 3133;
+  canvas.height = 1050;
   const ctx = canvas.getContext('2d');
 
   // 1. Draw base coupon template
-  ctx.drawImage(templateImg, 0, 0, 4251, 1425);
+  ctx.drawImage(templateImg, 0, 0, 3133, 1050);
 
-  // Stubs configuration for the new design:
+  // Stubs configuration for the new design (3133x1050):
   // Stub 1: Raffle Draw (Maroon #49252D)
   // Stub 2: Raffle Draw (Maroon #49252D)
   // Stub 3: Lunch & Drinks (Black #000000)
   // Stub 4: T-Shirt (Blue #2C5481)
   const stubs = [
-    { name: 'Raffle 1', cx: 1891.5, cy: 265.0, color: '#49252D', bx: 2054.0, colon_y: 668.0 },
-    { name: 'Raffle 2', cx: 2554.5, cy: 265.0, color: '#49252D', bx: 2704.0, colon_y: 673.0 },
-    { name: 'Lunch',    cx: 3217.5, cy: 265.0, color: '#000000', bx: 3339.0, colon_y: 668.0 },
-    { name: 'T-Shirt',  cx: 3880.5, cy: 265.0, color: '#2C5481', bx: 4019.0, colon_y: 673.0 }
+    { name: 'Raffle 1', cx: 1376.0, cy: 180.0, color: '#49252D', bx: 1471.0, colon_y: 492.0 },
+    { name: 'Raffle 2', cx: 1865.0, cy: 180.0, color: '#49252D', bx: 1970.0, colon_y: 496.0 },
+    { name: 'Lunch',    cx: 2375.0, cy: 180.0, color: '#000000', bx: 2459.0, colon_y: 492.0 },
+    { name: 'T-Shirt',  cx: 2865.0, cy: 180.0, color: '#2C5481', bx: 2980.0, colon_y: 496.0 }
   ];
 
   for (const s of stubs) {
-    // 1. Primary QR Renderer: Vector-sharp direct mathematical matrix rendering (synchronous & native)
-    let drawn = drawQrToCanvasContext(ctx, code, s.cx, s.cy, 260, s.color);
+    // 1. Primary QR Renderer: Vector-sharp direct mathematical matrix rendering (transparent background)
+    let drawn = drawQrToCanvasContext(ctx, code, s.cx, s.cy, 220, s.color);
 
     // 2. Secondary QR Fallback: QRCode.toCanvas offscreen rendering
     if (!drawn && typeof QRCode !== 'undefined' && QRCode.toCanvas) {
       try {
         const qrCanvas = document.createElement('canvas');
         await QRCode.toCanvas(qrCanvas, code, {
-          width: 520,
+          width: 440,
           margin: 1,
-          color: { dark: s.color, light: '#ffffff' }
+          color: { dark: s.color, light: '#00000000' }
         });
-        ctx.drawImage(qrCanvas, s.cx - 130, s.cy - 130, 260, 260);
+        ctx.drawImage(qrCanvas, s.cx - 110, s.cy - 110, 220, 220);
         drawn = true;
       } catch (e) {
         console.warn('QRCode.toCanvas fallback note:', e);
@@ -1616,9 +1612,9 @@ async function renderCouponToCanvas(code, templateImg) {
     if (!drawn && typeof QRCode !== 'undefined' && QRCode.toDataURL) {
       try {
         const qrDataUrl = await QRCode.toDataURL(code, {
-          width: 520,
+          width: 440,
           margin: 1,
-          color: { dark: s.color, light: '#ffffff' }
+          color: { dark: s.color, light: '#00000000' }
         });
         if (qrDataUrl) {
           const qImg = await new Promise((res, rej) => {
@@ -1629,7 +1625,7 @@ async function renderCouponToCanvas(code, templateImg) {
           });
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(qImg, s.cx - 130, s.cy - 130, 260, 260);
+          ctx.drawImage(qImg, s.cx - 110, s.cy - 110, 220, 220);
           drawn = true;
         }
       } catch (e) {
@@ -1639,10 +1635,10 @@ async function renderCouponToCanvas(code, templateImg) {
 
     // Draw inline Coupon Code right next to 'Cupon No:'
     ctx.save();
-    ctx.font = "bold 49px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+    ctx.font = "bold 36px 'Helvetica Neue', Helvetica, Arial, sans-serif";
     ctx.fillStyle = s.color;
     ctx.textBaseline = 'alphabetic';
-    ctx.translate(s.bx, s.colon_y - 18.0);
+    ctx.translate(s.bx, s.colon_y - 14.0);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText(code, 0, 0);
     ctx.restore();
@@ -1663,9 +1659,9 @@ async function generateCouponsPdfClientSide(records, onProgress, filename = '') 
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const cw = 565.0;
-  const ch = cw * (1425.0 / 4251.0); // ~189.4 pt
+  const ch = cw * (1050.0 / 3133.0); // ~189.35 pt
   const margin_top = 18.0;
-  const gap = (ph - 2 * margin_top - 4 * ch) / 3.0; // ~16.1 pt
+  const gap = (ph - 2 * margin_top - 4 * ch) / 3.0; // ~16.15 pt
   const x0 = (pw - cw) / 2.0;
 
   const total = records.length;

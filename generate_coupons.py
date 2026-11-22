@@ -17,7 +17,7 @@ import random
 import time
 import json
 import qrcode
-from PIL import Image
+from PIL import Image, ImageDraw
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from reportlab.lib.pagesizes import A4
@@ -34,6 +34,7 @@ ADMINS_JSON_PATH = os.path.join(BASE_DIR, "admins_db.json")
 ADMINS_JS_PATH = os.path.join(BASE_DIR, "admins_data.js")
 SETTINGS_PATH = os.path.join(BASE_DIR, "settings.json")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
+STATIC_JS_DIR = os.path.join(BASE_DIR, "static", "js")
 
 TOTAL_COUPONS = 1300
 COUPONS_PER_PAGE = 4
@@ -70,33 +71,38 @@ def generate_unique_codes(count=1300, seed=2026):
 
 
 def generate_qr_images(codes):
-    """Generate all 1300 QR code PNG images in each color theme."""
+    """Generate all 1300 QR code PNG images in each color theme with pure transparent background."""
     os.makedirs(QR_DIR, exist_ok=True)
     t0 = time.time()
-    print(f"Generating QR code images for {len(codes)} coupons...")
+    print(f"Generating transparent QR code images for {len(codes)} coupons...")
 
     qr_map = {}
     for idx, code in enumerate(codes, 1):
-        # We generate the main maroon QR and color variants
         base_name = f"QR_{idx:04d}_{code}"
         m_file = os.path.join(QR_DIR, f"{base_name}_maroon.png")
         k_file = os.path.join(QR_DIR, f"{base_name}_black.png")
         b_file = os.path.join(QR_DIR, f"{base_name}_blue.png")
 
-        if not (os.path.exists(m_file) and os.path.exists(k_file) and os.path.exists(b_file)):
-            # High-resolution QR codes (box_size=12 gives crisp ~350px image for high-precision printing)
-            qr = qrcode.QRCode(box_size=12, border=1)
-            qr.add_data(code)
-            qr.make(fit=True)
+        # High-resolution QR codes with transparent background (no white box)
+        qr = qrcode.QRCode(box_size=12, border=1)
+        qr.add_data(code)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()
+        mod_count = len(matrix)
+        border = 1
+        box_size = 12
+        img_size = (mod_count + 2 * border) * box_size
 
-            img_m = qr.make_image(fill_color=MAROON_RGB, back_color="white").convert("RGB")
-            img_m.save(m_file)
-
-            img_k = qr.make_image(fill_color=BLACK_RGB, back_color="white").convert("RGB")
-            img_k.save(k_file)
-
-            img_b = qr.make_image(fill_color=BLUE_RGB, back_color="white").convert("RGB")
-            img_b.save(b_file)
+        for col_rgb, f_path in [(MAROON_RGB, m_file), (BLACK_RGB, k_file), (BLUE_RGB, b_file)]:
+            img = Image.new("RGBA", (img_size, img_size), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(img)
+            for r in range(mod_count):
+                for c in range(mod_count):
+                    if matrix[r][c]:
+                        xm = (c + border) * box_size
+                        ym = (r + border) * box_size
+                        draw.rectangle([xm, ym, xm + box_size - 1, ym + box_size - 1], fill=(*col_rgb, 255))
+            img.save(f_path)
 
         qr_map[code] = {
             "maroon": m_file,
@@ -106,7 +112,7 @@ def generate_qr_images(codes):
         }
 
         if idx % 300 == 0 or idx == len(codes):
-            print(f"  Generated {idx}/{len(codes)} QRs ({time.time()-t0:.1f}s)")
+            print(f"  Generated {idx}/{len(codes)} transparent QRs ({time.time()-t0:.1f}s)")
 
     return qr_map
 
@@ -269,11 +275,14 @@ def build_databases(codes, qr_map):
     with open(JS_DATA_PATH, "w", encoding="utf-8") as f:
         f.write(js_content)
 
-    # Copy to docs/ for GitHub Pages
+    # Copy to docs/ and static/js/
     os.makedirs(DOCS_DIR, exist_ok=True)
+    os.makedirs(STATIC_JS_DIR, exist_ok=True)
     with open(os.path.join(DOCS_DIR, "coupons_db.json"), "w", encoding="utf-8") as f:
         json.dump(db_records, f, indent=2)
     with open(os.path.join(DOCS_DIR, "coupons_data.js"), "w", encoding="utf-8") as f:
+        f.write(js_content)
+    with open(os.path.join(STATIC_JS_DIR, "coupons_data.js"), "w", encoding="utf-8") as f:
         f.write(js_content)
 
     # Admins DB: Super Admin + Initial Admins
@@ -324,6 +333,8 @@ def build_databases(codes, qr_map):
         f.write(admins_js)
     with open(os.path.join(DOCS_DIR, "admins_data.js"), "w", encoding="utf-8") as f:
         f.write(admins_js)
+    with open(os.path.join(STATIC_JS_DIR, "admins_data.js"), "w", encoding="utf-8") as f:
+        f.write(admins_js)
 
     # Super Admin Global Scanning Settings
     settings_data = {
@@ -342,39 +353,41 @@ def build_databases(codes, qr_map):
         f.write(settings_js)
     with open(os.path.join(DOCS_DIR, "settings_data.js"), "w", encoding="utf-8") as f:
         f.write(settings_js)
+    with open(os.path.join(STATIC_JS_DIR, "settings_data.js"), "w", encoding="utf-8") as f:
+        f.write(settings_js)
 
 
 def build_printable_pdf(codes, qr_map):
-    """Compile the complete 315-page printable PDF on A4 paper with pixel-perfect coordinates."""
-    print("Compiling 315-page printable PDF...")
+    """Compile the complete 325-page printable PDF on A4 paper with pixel-perfect coordinates."""
+    print("Compiling 325-page printable PDF...")
     t0 = time.time()
     c = canvas.Canvas(PDF_PATH, pagesize=A4)
 
     pw, ph = A4
     cw = 565.0
-    template_w = 4251.0
-    template_h = 1425.0
+    template_w = 3133.0
+    template_h = 1050.0
     scale = cw / template_w
-    ch = cw * (template_h / template_w)  # ~189.4 pt
+    ch = cw * (template_h / template_w)  # ~189.35 pt
 
     margin_top = 18.0
-    gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.1 pt between coupons
+    gap = (ph - 2 * margin_top - 4 * ch) / 3.0  # ~16.15 pt between coupons
     x0 = (pw - cw) / 2.0  # ~15.14 pt
 
-    # Stubs info for new layout:
-    # Stub 1: Raffle Draw (Maroon)
-    # Stub 2: Raffle Draw (Maroon)
+    # Stubs info for new 3133x1050 layout:
+    # Stub 1: Raffle Draw 1 (Maroon)
+    # Stub 2: Raffle Draw 2 (Maroon)
     # Stub 3: Lunch & Drinks (Black)
     # Stub 4: T-Shirt (Blue)
     # (name, center_x, center_y, text_color_rgb, qr_variant, baseline_x, colon_top_y)
     stubs_config = [
-        ("Raffle 1", 1891.5, 265.0, MAROON_PDF, "maroon", 2054.0, 668.0),
-        ("Raffle 2", 2554.5, 265.0, MAROON_PDF, "maroon", 2704.0, 673.0),
-        ("Lunch",    3217.5, 265.0, BLACK_PDF,  "black",  3339.0, 668.0),
-        ("T-Shirt",  3880.5, 265.0, BLUE_PDF,   "blue",   4019.0, 673.0),
+        ("Raffle 1", 1376.0, 180.0, MAROON_PDF, "maroon", 1471.0, 492.0),
+        ("Raffle 2", 1865.0, 180.0, MAROON_PDF, "maroon", 1970.0, 496.0),
+        ("Lunch",    2375.0, 180.0, BLACK_PDF,  "black",  2459.0, 492.0),
+        ("T-Shirt",  2865.0, 180.0, BLUE_PDF,   "blue",   2980.0, 496.0),
     ]
 
-    qr_pixels = 260.0
+    qr_pixels = 220.0
     qr_sz = qr_pixels * scale
 
     for page_num in range(TOTAL_PAGES):
@@ -388,23 +401,23 @@ def build_printable_pdf(codes, qr_map):
             # 1. Draw base coupon template
             c.drawImage(TEMPLATE_IMG, x0, y0, width=cw, height=ch)
 
-            # 2. Draw ALL 4 Stubs: Perfectly Centered QR code in right blank space + Inline Coupon Code
+            # 2. Draw ALL 4 Stubs: Perfectly Centered Transparent QR + Inline Coupon Code
             for name, cx, cy, col, qr_variant, base_x, colon_y in stubs_config:
                 qr_file = qr_map[code][qr_variant]
 
-                # Centered in the right blank area / stub width with zero text or border overlap
+                # Centered in the right blank area / stub width with transparent background (no white box)
                 qr_x_img = cx - qr_pixels / 2.0
                 qr_y_img = cy - qr_pixels / 2.0
                 qr_x = x0 + qr_x_img * scale
                 qr_y = y0 + (template_h - qr_y_img - qr_pixels) * scale
-                c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz)
+                c.drawImage(qr_file, qr_x, qr_y, width=qr_sz, height=qr_sz, mask='auto')
 
-                # Coupon Code directly inline on the exact same line as 'Cupon No:' (delta = 0px)
+                # Coupon Code directly inline on the exact same line as 'Cupon No:'
                 tx = x0 + base_x * scale
-                ty = y0 + (template_h - colon_y + 18.0) * scale
+                ty = y0 + (template_h - colon_y + 14.0) * scale
                 c.saveState()
                 c.setFillColorRGB(*col)
-                c.setFont("Helvetica-Bold", 49.4 * scale)
+                c.setFont("Helvetica-Bold", 36.0 * scale)
                 c.translate(tx, ty)
                 c.rotate(90)
                 c.drawString(0, 0, code)
